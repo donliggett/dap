@@ -13,9 +13,13 @@ still there.
 ## running the tests
 
 ```bash
-npm install   # playwright, for the browser tests
+npm install                     # dependencies
+npx playwright install chromium # the browser the tests drive — separate step
 npm test
 ```
+
+`npm install` gets the playwright library but not the browser binary, which is
+why the second line exists. Skip it and every test fails in milliseconds.
 
 the tests drive a real browser and they **wait**. every one that types something
 then sits still for a second before checking. that pause is the point.

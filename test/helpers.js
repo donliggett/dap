@@ -2,6 +2,29 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { chromium } from 'playwright';
+
+/**
+ * `npm install` gets the playwright library; it does not get the browser.
+ *
+ * Without that second step every test fails in a couple of milliseconds with a
+ * path to an executable that isn't there — fifteen identical stack traces that
+ * look like the app is broken when it's the harness that isn't set up. Say the
+ * one thing that fixes it, once.
+ */
+async function launch() {
+  try {
+    return await chromium.launch();
+  } catch (err) {
+    if (/Executable doesn't exist|please run|browserType.launch/i.test(String(err?.message))) {
+      throw new Error(
+        'the browser these tests drive is not installed yet.\n' +
+          '  run:  npx playwright install chromium\n' +
+          `  (original error: ${String(err.message).split('\n')[0]})`,
+      );
+    }
+    throw err;
+  }
+}
 import { serve } from '../src/server.js';
 
 export async function makeVault(files = {}) {
@@ -62,7 +85,7 @@ export async function waitForAttr(page, selector, attr, expected, timeout = 3000
 export async function withApp(files, fn) {
   const vault = await makeVault(files);
   const app = await serve({ vault, port: 0 });
-  const browser = await chromium.launch();
+  const browser = await launch();
   const page = await browser.newPage();
   try {
     await page.goto(app.url);

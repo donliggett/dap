@@ -1,6 +1,7 @@
 import { createEditor } from './editor/index.js';
 import { splitFrontmatter, joinFrontmatter } from './frontmatter.js';
 import { slugForFilename } from './naming.js';
+import { createSearch } from './search.js';
 
 const $ = (sel) => document.querySelector(sel);
 const shell = $('.shell');
@@ -296,9 +297,25 @@ els.nameInput.addEventListener('keydown', (e) => {
 });
 els.nameInput.addEventListener('blur', () => endNaming(true));
 
+const search = createSearch({
+  root: $('[data-search]'),
+  onOpen: (path) => open(path),
+});
+$('[data-open-search]').addEventListener('click', () => {
+  shell.dataset.drawer = 'closed';
+  search.open();
+});
+
 addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') shell.dataset.drawer = 'closed';
-  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') { e.preventDefault(); save(); }
+  const mod = e.metaKey || e.ctrlKey;
+  if (mod && e.key.toLowerCase() === 'k') {
+    e.preventDefault();
+    e.stopPropagation();
+    search.open();
+    return;
+  }
+  if (e.key === 'Escape' && !search.isOpen) shell.dataset.drawer = 'closed';
+  if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); save(); }
 }, true);
 
 // Never leave an edit stranded in memory.

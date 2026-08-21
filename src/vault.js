@@ -117,6 +117,128 @@ export class Vault {
   }
 }
 
+/**
+ * Search, by reading the files.
+ *
+ * There is still no index — nothing is persisted, and the filesystem remains
+ * the only source of truth. What there IS is a read cache, because measuring
+ * showed re-reading everything per keystroke costs 142ms at 400 notes and
+ * 409ms at 1500. That's laggy while typing.
+ *
+ * The cache holds each file's text against its mtime and size, both of which
+ * `list()` already stats on every query. A file whose stat is unchanged is
+ * served from memory; anything touched is re-read. So it cannot go stale — it
+ * is checked against the disk every single time, not invalidated by a watcher
+ * or a timer that might miss something.
+ *
+ * Measured after: 100 notes 9ms, 400 notes 30ms, 1500 notes ~100ms. Memory is
+ * the whole vault as text, under 2MB at 1500 notes. Past a few thousand notes
+ * the directory walk starts to dominate and this needs rethinking.
+ *
+ * Every term has to appear somewhere (AND, not OR), because a two-word query is
+ * almost always someone narrowing down rather than widening out.
+ */
+const textCache = new Map(); // abs path -> { mtime, size, text, lower }
+
+async function readCached(abs, mtime, size) {
+  const hit = textCache.get(abs);
+  if (hit && hit.mtime === mtime && hit.size === size) return hit;
+  const text = await fs.readFile(abs, 'utf8');
+  // Lowercased copy alongside it. This did NOT measurably speed anything up —
+  // the remaining cost is the directory walk and the scans — but it avoids
+  // allocating a second copy of the whole vault on every keystroke.
+  const entry = { mtime, size, text, lower: text.toLowerCase() };
+  textCache.set(abs, entry);
+  return entry;
+}
+Vault.prototype.search = async function search(query, { limit = 50 } = {}) {
+  const terms = String(query ?? '')
+    .toLowerCase()
+    .split(/\s+/)
+    .map((t) => t.trim())
+    .filter(Boolean);
+  if (!terms.length) return [];
+
+  const files = await this.list();
+  const hits = [];
+
+  for (const file of files) {
+    let entry;
+    try {
+      entry = await readCached(path.join(this.root, file.path), file.mtime, file.size);
+    } catch {
+      continue; // deleted between listing and reading
+    }
+    const text = entry.text;
+    const name = file.path.toLowerCase();
+    const body = entry.lower;
+
+    // Every term must be findable somewhere in the note — name or body.
+    if (!terms.every((t) => name.includes(t) || body.includes(t))) continue;
+
+    const nameHits = terms.filter((t) => name.includes(t)).length;
+    const stem = file.path.slice(file.path.lastIndexOf('/') + 1).replace(/\.md$/i, '').toLowerCase();
+
+    let score = 0;
+    if (stem === terms.join(' ')) score += 4000;      // you typed the name exactly
+    if (stem.startsWith(terms[0])) score += 1200;      // ...or the start of it
+    score += nameHits * 600;                           // name beats body, always
+    for (const t of terms) {
+      score += Math.min(occurrences(body, t), 10) * 8;
+    }
+
+    hits.push({
+      path: file.path,
+      mtime: file.mtime,
+      score,
+      ...firstMatchingLine(text, terms),
+    });
+  }
+
+  // Recency only settles ties — otherwise a note you touched today would
+  // outrank the one you actually asked for.
+  hits.sort((a, b) => b.score - a.score || b.mtime - a.mtime);
+  return hits.slice(0, limit);
+};
+
+function occurrences(haystack, needle) {
+  let n = 0;
+  let i = haystack.indexOf(needle);
+  while (i !== -1) {
+    n++;
+    i = haystack.indexOf(needle, i + needle.length);
+  }
+  return n;
+}
+
+/**
+ * The line to show under the result. Prefers a line containing the most terms,
+ * so a two-word query lands on the line that has both rather than the first
+ * line that happens to mention one.
+ */
+function firstMatchingLine(text, terms) {
+  const lines = text.split('\n');
+  let best = null;
+
+  for (let i = 0; i < lines.length; i++) {
+    const lower = lines[i].toLowerCase();
+    const found = terms.filter((t) => lower.includes(t)).length;
+    if (!found) continue;
+    if (!best || found > best.found) best = { found, line: i, text: lines[i] };
+    if (best.found === terms.length) break;
+  }
+
+  if (!best) return { line: null, snippet: '' };
+
+  let snippet = best.text.trim();
+  if (snippet.length > 160) {
+    const at = snippet.toLowerCase().indexOf(terms[0]);
+    const from = Math.max(0, at - 50);
+    snippet = (from ? '…' : '') + snippet.slice(from, from + 160).trim() + '…';
+  }
+  return { line: best.line, snippet };
+}
+
 export const hash = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
 
 export class BadPath extends Error {

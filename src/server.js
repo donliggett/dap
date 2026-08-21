@@ -86,6 +86,12 @@ export async function serve({ vault: vaultPath, port = 4747, host = '127.0.0.1',
         return json(res, result.conflict ? 409 : 200, result);
       }
 
+      if (route === 'GET /api/search') {
+        const q = url.searchParams.get('q') ?? '';
+        const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
+        return json(res, 200, { query: q, terms, results: await vault.search(q) });
+      }
+
       if (req.method === 'GET') return serveStatic(res, url.pathname);
       return json(res, 404, { error: 'not found' });
     } catch (err) {
