@@ -176,13 +176,15 @@ describe('first run', () => {
     await withApp({}, async ({ page, read }) => {
       await page.waitForSelector('body[data-ready="true"]');
       await page.locator('.empty-btn').click();
-      await page.waitForTimeout(600);
+      await page.locator('[data-name-input]').fill('first note');
+      await page.keyboard.press('Enter');
+      await page.waitForTimeout(700);
 
       await page.locator('[data-editor]').click();
       await page.keyboard.type('first thought');
       await page.waitForTimeout(1200);
 
-      assert.match(await read('untitled.md'), /first thought/);
+      assert.match(await read('first note.md'), /first thought/);
     });
   });
 });

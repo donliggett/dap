@@ -671,3 +671,25 @@ textarea.note-plain::placeholder { color: var(--ink-faint); }
 .editor-host { display: block; min-height: 100%; }
 .editor-host .ProseMirror { outline: none; }
 .editor-host .ProseMirror:focus { outline: none; }
+
+/* Naming happens where the name will end up — the field replaces the label in
+   the topbar, so you type the name in the place you'll later read it. */
+.doc-input {
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 3px 7px;
+  border: 1px solid var(--accent-lit);
+  border-radius: var(--r-sm);
+  background: var(--ground);
+  color: var(--ink);
+  width: min(320px, 46%);
+  outline: none;
+}
+.doc-input::placeholder { color: var(--ink-faint); }
+.doc-input[hidden] { display: none; }
+
+/* The + becomes the confirm while naming, so the button that started the job
+   is the button that finishes it. */
+.icon-btn.is-confirm { color: var(--accent); }
+.icon-btn.is-confirm:hover { background: var(--sunk); color: var(--accent); }
+.icon-btn[hidden] { display: none; }

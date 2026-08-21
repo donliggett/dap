@@ -1,5 +1,6 @@
 import { createEditor } from './editor/index.js';
 import { splitFrontmatter, joinFrontmatter } from './frontmatter.js';
+import { slugForFilename } from './naming.js';
 
 const $ = (sel) => document.querySelector(sel);
 const shell = $('.shell');
@@ -8,6 +9,9 @@ const els = {
   list: $('[data-note-list]'),
   count: $('[data-note-count]'),
   docName: $('[data-doc-name]'),
+  nameInput: $('[data-name-input]'),
+  newBtn: $('[data-new-btn]'),
+  confirmBtn: $('[data-confirm]'),
   statusPath: $('[data-status-path]'),
   saveDot: $('[data-save-dot]'),
   saveText: $('[data-save-text]'),
@@ -84,11 +88,21 @@ async function save() {
   refreshList();
 }
 
+function applyPath(path) {
+  state.path = path;
+  els.docName.textContent = path;
+  els.statusPath.textContent = path;
+}
+
 function setSaveState(kind) {
-  const text = { editing: 'editing', saving: 'saving…', saved: 'saved', conflict: 'changed on disk', ready: 'ready' }[kind];
+  const text = {
+    editing: 'editing', saving: 'saving…', saved: 'saved',
+    conflict: 'changed on disk', ready: 'ready', naming: 'naming…',
+  }[kind];
   els.saveText.textContent = text;
+  const bad = kind === 'conflict';
   els.saveDot.style.background =
-    kind === 'conflict' ? 'var(--danger)' : kind === 'saved' || kind === 'ready' ? 'var(--accent-lit)' : 'var(--ink-faint)';
+    bad ? 'var(--danger)' : kind === 'saved' || kind === 'ready' ? 'var(--accent-lit)' : 'var(--ink-faint)';
 }
 
 // ── notes ──────────────────────────────────────────────────────────────
@@ -129,8 +143,7 @@ async function open(path) {
   state.front = front;
   editor.setMarkdown(body);
   els.source.textContent = note.content;
-  els.docName.textContent = note.path;
-  els.statusPath.textContent = note.path;
+  applyPath(note.path);
   updateWords();
   setSaveState('ready');
   shell.dataset.drawer = 'closed';
@@ -218,20 +231,70 @@ $('[data-theme-toggle]').addEventListener('click', () => {
 });
 
 /**
- * New notes are created immediately rather than behind a prompt() — a modal is
- * a poor first interaction, and naming a note before writing it is backwards.
- * The name walks to the first free slot; renaming comes later.
+ * Naming a note happens before it exists.
+ *
+ * The + turns the filename slot into a field and becomes a checkmark; whatever
+ * you type is the name, and leaving the field commits it. Nothing is written
+ * until then, so backing out leaves no stray `untitled.md` behind — which is
+ * what forced a rename feature to exist in the first place.
  */
-async function newNote() {
-  const taken = new Set(state.notes.map((n) => n.path));
-  let path = 'untitled.md';
-  for (let n = 2; taken.has(path); n++) path = `untitled ${n}.md`;
+let naming = false;
+
+function beginNaming() {
+  if (naming) return;
+  naming = true;
+  els.docName.hidden = true;
+  els.nameInput.hidden = false;
+  els.nameInput.value = '';
+  els.newBtn.hidden = true;
+  els.confirmBtn.hidden = false;
+  setSaveState('naming');
+  els.nameInput.focus();
+}
+
+function endNaming(commit) {
+  // Confirming hides the field, and hiding it fires blur — which would run this
+  // a second time. First call wins.
+  if (!naming) return;
+  naming = false;
+  const typed = els.nameInput.value;
+  els.nameInput.hidden = true;
+  els.docName.hidden = false;
+  els.confirmBtn.hidden = true;
+  els.newBtn.hidden = false;
+  if (!commit) {
+    setSaveState(state.path ? 'saved' : 'ready');
+    return;
+  }
+  createNamed(typed);
+}
+
+async function createNamed(typed) {
+  // Whatever was typed becomes a filename a filesystem will accept. An empty
+  // field is not an error — it just means you hadn't decided yet.
+  const base = slugForFilename(typed) || 'untitled';
+
+  // Never refuse over a collision. There is no rename to recover with, so
+  // walking to a free name is kinder than a dead end.
+  const taken = new Set(state.notes.map((n) => n.path.toLowerCase()));
+  let path = `${base}.md`;
+  for (let n = 2; taken.has(path.toLowerCase()); n++) path = `${base} ${n}.md`;
+
   await api.write(path, '', null);
   await refreshList();
   await open(path);
   editor.focus();
 }
-for (const b of document.querySelectorAll('[data-new]')) b.addEventListener('click', newNote);
+
+for (const b of document.querySelectorAll('[data-new]')) b.addEventListener('click', beginNaming);
+els.confirmBtn.addEventListener('mousedown', (e) => e.preventDefault()); // keep focus so blur doesn't race the click
+els.confirmBtn.addEventListener('click', () => endNaming(true));
+
+els.nameInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); endNaming(true); }
+  if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); endNaming(false); }
+});
+els.nameInput.addEventListener('blur', () => endNaming(true));
 
 addEventListener('keydown', (e) => {
   if (e.key === 'Escape') shell.dataset.drawer = 'closed';

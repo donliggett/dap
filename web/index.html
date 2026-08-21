@@ -25,10 +25,18 @@
     </button>
     <span class="wordmark"><span class="dot"></span>dap</span>
     <span class="doc-name" data-doc-name></span>
+    <input class="doc-input" type="text" data-name-input hidden
+           placeholder="name this note" aria-label="Note name"
+           autocomplete="off" autocapitalize="off" spellcheck="false">
     <span class="spacer"></span>
-    <button class="icon-btn" type="button" aria-label="New note" data-new>
+    <button class="icon-btn" type="button" aria-label="New note" data-new data-new-btn>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
         <path d="M12 5v14M5 12h14"/>
+      </svg>
+    </button>
+    <button class="icon-btn is-confirm" type="button" aria-label="Create note" data-confirm hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="m5 12.5 4.5 4.5L19 7"/>
       </svg>
     </button>
   </header>
