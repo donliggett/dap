@@ -30,6 +30,14 @@ export function createRichEditor() {
   return {
     capabilities: ['bold', 'italic', 'strike', 'heading', 'bulletList', 'link', 'table', 'clear', 'image'],
 
+    /**
+     * Distinct from the 'image' capability on purpose. That one says "an image
+     * can be inserted"; this says "an image is drawn on screen", which is what
+     * decides whether hrefs need swapping for URLs the browser can load. Both
+     * engines can accept an image; only this one displays it.
+     */
+    rendersImages: true,
+
     mount(node) {
       node.replaceChildren();
       editor = new Editor({
@@ -91,6 +99,32 @@ export function createRichEditor() {
       suppress = true;
       editor.commands.setContent(md, false);
       suppress = false;
+    },
+
+    /**
+     * Put an image into the document.
+     *
+     * `at` is a pair of client coordinates, which is what a drop event gives
+     * you. Dropping an image at the bottom of a note and watching it appear at
+     * the top, where the caret happened to be, reads as broken — so a drop
+     * lands where it was dropped, and everything else lands at the caret.
+     */
+    insertImage(src, { alt = '', at = null } = {}) {
+      if (!editor) return false;
+      const attrs = { src, alt };
+
+      // Always an explicit position, never setImage().
+      //
+      // setImage() inserts at the current selection, and after inserting an
+      // image the selection *is* that image — so a second insert replaced the
+      // first rather than adding to it. Two images, one link. Using the end of
+      // the selection puts the new one after whatever is selected instead of
+      // on top of it.
+      const dropped = at && editor.view.posAtCoords({ left: at.x, top: at.y });
+      const pos = dropped ? dropped.pos : editor.state.selection.to;
+
+      editor.chain().focus().insertContentAt(pos, { type: 'image', attrs }).run();
+      return true;
     },
 
     onChange(fn) {

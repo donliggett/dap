@@ -28,7 +28,10 @@ export function createPlainEditor() {
 
   return {
     /** Commands this engine supports. The toolbar dims anything absent. */
-    capabilities: [],
+    capabilities: ['image'],
+
+    /** A textarea shows the markdown; it never draws the picture. */
+    rendersImages: false,
 
     mount(node) {
       el = document.createElement('textarea');
@@ -57,6 +60,23 @@ export function createPlainEditor() {
       suppress = true;
       el.value = md;
       suppress = false;
+    },
+
+    /**
+     * The plain engine writes the markdown itself, because that is all it has.
+     *
+     * `at` is ignored: a textarea has no notion of a position under the mouse,
+     * and guessing one from coordinates would be worse than the honest answer
+     * of "where your cursor already is".
+     */
+    insertImage(src, { alt = '' } = {}) {
+      if (!el) return false;
+      const snippet = `![${alt}](${src})`;
+      const { selectionStart: from, selectionEnd: to, value } = el;
+      el.value = value.slice(0, from) + snippet + value.slice(to);
+      el.selectionStart = el.selectionEnd = from + snippet.length;
+      emit();
+      return true;
     },
 
     onChange(fn) {

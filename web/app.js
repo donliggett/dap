@@ -4,6 +4,8 @@ import { slugForFilename } from './naming.js';
 import { createSearch } from './search.js';
 import { trackKeyboard } from './keyboard.js';
 import { toBrowser, toDisk } from './attach-rewrite.js';
+import { uploadImage, imagesFrom, altFor } from './attach-client.js';
+import { hrefFor } from './attach-path.js';
 
 const $ = (sel) => document.querySelector(sel);
 const shell = $('.shell');
@@ -30,6 +32,8 @@ const els = {
   aboutVersion: $('[data-about-version]'),
   trashSummary: $('[data-trash-summary]'),
   trashRestore: $('[data-trash-restore]'),
+  imageInput: $('[data-image-input]'),
+  notice: $('[data-notice]'),
   editorHost: $('[data-editor-host]'),
   empty: $('[data-empty-state]'),
   emptyPath: $('[data-empty-path]'),
@@ -68,8 +72,13 @@ els.editor = document.querySelector('[data-editor]');
  * The plain engine is exempt on purpose. It shows raw markdown in a textarea,
  * where an image cannot render anyway and a `/api/file?path=` URL would just be
  * noise in the middle of the source someone came there to read.
+ *
+ * Keyed on `rendersImages`, not on the 'image' capability. Both engines can
+ * *insert* an image; only one *draws* it, and it is the drawing that needs a
+ * URL. Reusing one flag for both questions is the same mistake as reusing a
+ * data attribute for a state and a hook, which cost three bugs in this build.
  */
-const rendersImages = editor.capabilities.includes('image');
+const rendersImages = editor.rendersImages === true;
 const readEditor = () =>
   rendersImages ? toDisk(state.path ?? '', editor.getMarkdown()) : editor.getMarkdown();
 const writeEditor = (md) =>
@@ -412,6 +421,16 @@ const blockLabel = $('[data-block-label]');
 
 for (const btn of toolButtons) {
   const cmd = btn.dataset.cmd;
+  if (cmd === 'image') {
+    // Not an editor command: it opens a file picker, and the engine only gets
+    // involved once there are bytes to insert. Still gated on the capability,
+    // so an engine that cannot take an image says so rather than throwing.
+    const canAttach = editor.capabilities.includes('image');
+    btn.disabled = !canAttach;
+    btn.classList.toggle('is-unavailable', !canAttach);
+    if (canAttach) btn.addEventListener('click', () => els.imageInput.click());
+    continue;
+  }
   const supported = editor.capabilities.includes(cmd);
   btn.disabled = !supported;
   btn.classList.toggle('is-unavailable', !supported);
@@ -428,6 +447,10 @@ for (const btn of toolButtons) {
 function refreshToolbar() {
   for (const btn of toolButtons) {
     if (btn.disabled) continue;
+    // Image is an action, not a toggle. isActive('image') is true whenever an
+    // image happens to be selected, which lit the button up and made it look
+    // like pressing it again would take the picture out.
+    if (btn.dataset.cmd === 'image') continue;
     btn.setAttribute('aria-pressed', String(editor.isActive(btn.dataset.cmd)));
   }
   if (blockLabel && editor.blockLabel) blockLabel.textContent = editor.blockLabel();
@@ -526,6 +549,126 @@ els.nameInput.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); endNaming(false); }
 });
 els.nameInput.addEventListener('blur', () => endNaming(true));
+
+// ── attaching images ───────────────────────────────────────────────────
+/**
+ * Three doors into the same corridor: the toolbar button, a paste, a drop.
+ *
+ * The button is not the nicest of the three and it is the one that matters
+ * most, because it is the only one that exists on a phone — iOS turns an image
+ * file input into a camera-and-library sheet for nothing.
+ */
+async function attachFiles(files, { at = null } = {}) {
+  if (!state.path) return;
+  const list = [...files];
+  if (!list.length) return;
+
+  let inserted = 0;
+  let converted = 0;
+  let failure = null;
+
+  for (const [i, file] of list.entries()) {
+    setSaveState('editing');
+    els.saveText.textContent =
+      list.length > 1 ? `adding image ${i + 1} of ${list.length}…` : 'adding image…';
+
+    const result = await uploadImage(file);
+    if (!result.ok) {
+      // One bad file must not silently swallow the rest of a multi-select.
+      failure = result.error;
+      continue;
+    }
+    if (result.converted) converted += 1;
+
+    // What gets inserted depends on who is going to read it back. The rich
+    // engine holds browser URLs and `readEditor` converts them to paths on the
+    // way out; the plain engine holds exactly what will be saved, so it needs
+    // the relative path now. Handing the URL to both wrote `/api/file?path=`
+    // straight into the file — found by running it, not by a test.
+    const src = rendersImages ? result.url : hrefFor(state.path, result.path);
+
+    // Only the first lands where it was dropped; the rest follow the caret,
+    // which by then sits just after the one before it.
+    editor.insertImage(src, { alt: altFor(file), at: i === 0 ? at : null });
+    inserted += 1;
+  }
+
+  // A conversion the person did not ask for has to be said out loud, or it
+  // reads as dap losing their file.
+  if (converted) notify(converted === 1 ? 'svg converted to png' : `${converted} svgs converted to png`);
+  if (failure) notify(failure);
+
+  if (inserted) scheduleSave();
+  else setSaveState(state.dirty ? 'editing' : 'ready');
+}
+
+/**
+ * A sentence with a short life, kept out of the save state.
+ *
+ * Anything written into the save text is overwritten by the next save a second
+ * later. That is correct for "saving…" and useless for "that file was
+ * refused" — which is how the first version of this lost every error it
+ * produced.
+ */
+let noticeTimer = null;
+function notify(message) {
+  els.notice.textContent = message;
+  els.notice.hidden = false;
+  clearTimeout(noticeTimer);
+  noticeTimer = setTimeout(() => { els.notice.hidden = true; }, 8000);
+}
+
+els.imageInput.addEventListener('change', async () => {
+  await attachFiles(els.imageInput.files);
+  // Reset, or picking the same file twice in a row fires nothing the second
+  // time — the value has not changed, so there is no change event.
+  els.imageInput.value = '';
+});
+
+els.editorHost.addEventListener('paste', (e) => {
+  const images = imagesFrom(e.clipboardData);
+  if (!images.length) return;
+  // Only now: letting the default run as well would paste the picture twice,
+  // once as a file and once as whatever HTML flavour came with it.
+  e.preventDefault();
+  attachFiles(images);
+});
+
+/**
+ * Drop lands where it was dropped.
+ *
+ * dragover has to be cancelled or the browser navigates away to the file, and
+ * the counter exists because dragenter/dragleave fire for every child element
+ * the pointer crosses — tracking a boolean makes the highlight flicker as you
+ * move over the text.
+ */
+let dragDepth = 0;
+
+els.editorHost.addEventListener('dragover', (e) => {
+  if (!e.dataTransfer?.types?.includes('Files')) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'copy';
+});
+
+els.editorHost.addEventListener('dragenter', (e) => {
+  if (!e.dataTransfer?.types?.includes('Files')) return;
+  dragDepth += 1;
+  shell.dataset.dropping = 'true';
+});
+
+els.editorHost.addEventListener('dragleave', () => {
+  dragDepth = Math.max(0, dragDepth - 1);
+  if (!dragDepth) shell.dataset.dropping = 'false';
+});
+
+els.editorHost.addEventListener('drop', (e) => {
+  const images = imagesFrom(e.dataTransfer);
+  dragDepth = 0;
+  shell.dataset.dropping = 'false';
+  if (!images.length) return;
+  e.preventDefault();
+  attachFiles(images, { at: { x: e.clientX, y: e.clientY } });
+});
 
 // ── settings ───────────────────────────────────────────────────────────
 /**

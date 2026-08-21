@@ -46,6 +46,13 @@ const CASES = {
   'with-frontmatter.md':
     '---\ntitle: fixture\n---\n\n# front\n\n![board](attachments/board.png)\n',
 
+  /**
+   * Adjacent, with no separator. Not a shape anyone types — it is what dap
+   * itself writes when two images are inserted one after the other, which
+   * makes it the shape most likely to be re-serialized differently on open.
+   */
+  'adjacent.md': '# adjacent\n\n![a](attachments/a.png)![b](attachments/b.png)\n',
+
   /** Not an image at all — a fenced block that merely looks like one. */
   'in-code.md':
     '# code\n\n```md\n![board](attachments/board.png)\n```\n',

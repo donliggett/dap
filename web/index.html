@@ -74,6 +74,18 @@
 
     <span class="tool-sep"></span>
 
+    <button class="tool fmt" type="button" aria-label="Insert image" data-cmd="image" data-image-btn>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round">
+        <rect x="3.5" y="5" width="17" height="14" rx="2"/>
+        <circle cx="9" cy="10" r="1.5" fill="currentColor" stroke="none"/>
+        <path d="m4 17 4.5-4.5 3.5 3.5 3-2.5 5 4.5"/>
+      </svg>
+    </button>
+    <!-- The only route into this feature that works on a phone: iOS turns an
+         image file input into a camera-and-library sheet for free. -->
+    <input class="visually-hidden" type="file" accept="image/*" multiple
+           data-image-input aria-hidden="true" tabindex="-1">
+
     <button class="tool fmt" type="button" aria-label="Table" data-cmd="table">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
         <rect x="4" y="5" width="16" height="14" rx="2"/><path d="M4 10h16M10 10v9"/>
@@ -155,6 +167,10 @@
   <footer class="status">
     <span class="saved"><span class="dot" data-save-dot></span><span data-save-text>ready</span></span>
     <button class="undo-btn" type="button" data-undo hidden>undo</button>
+    <!-- Transient, and deliberately not the save state. Anything written into
+         the save text is overwritten by the next save a second later, which is
+         fine for "saving…" and useless for "that file was refused". -->
+    <span class="notice" data-notice hidden></span>
     <span class="hide-narrow" data-status-path></span>
     <span class="spacer"></span>
     <span class="hide-narrow" data-word-count></span>
