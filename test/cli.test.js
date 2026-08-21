@@ -5,6 +5,10 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeVault } from './helpers.js';
+import * as cli from '../src/cli.js';
+import { Vault } from '../src/vault.js';
+
+const exists = (abs) => fs.access(abs).then(() => true, () => false);
 
 const BIN = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../bin/dap.js');
 
@@ -29,12 +33,12 @@ before(async () => {
 after(async () => fs.rm(vault, { recursive: true, force: true }));
 
 /** Runs without a TTY, which is the piped behaviour. */
-function run(args, { input = null, cwd = vault } = {}) {
+function run(args, { input = null, cwd = vault, vaultDir = vault } = {}) {
   return new Promise((resolve) => {
     const child = execFile(
       process.execPath,
       [BIN, ...args],
-      { cwd, env: { ...process.env, DAP_VAULT: vault } },
+      { cwd, env: { ...process.env, DAP_VAULT: vaultDir } },
       (error, stdout, stderr) => resolve({ code: error?.code ?? 0, stdout, stderr }),
     );
     if (input != null) child.stdin.end(input);
@@ -289,6 +293,154 @@ describe('no server needed', () => {
     for (const args of [['ls'], ['find', 'budget'], ['cat', 'budget'], ['path', 'budget']]) {
       const { code } = await run(args);
       assert.equal(code, 0, `\`dap ${args.join(' ')}\` needed something to be running`);
+    }
+  });
+});
+
+/**
+ * Deleting from a terminal.
+ *
+ * The interesting part is not the deletion — `vault.trash` is covered
+ * elsewhere — it is the asking. dap's rule is that destructive things ask, and
+ * a CLI has nobody to ask when it runs in a script. A prompt written to a pipe
+ * is not a safeguard, it is a hang.
+ */
+describe('rm', () => {
+  const own = (dir) => ({ vaultDir: dir, cwd: dir });
+
+  test('moves the note to the trash rather than removing it', async () => {
+    const dir = await makeVault({ 'note.md': 'body\n' });
+    try {
+      const { code, stdout } = await run(['rm', 'note', '--yes'], own(dir));
+
+      assert.equal(code, cli.EXIT.ok);
+      assert.match(stdout.trim(), /^\.trash\//, `said "${stdout.trim()}"`);
+      assert.equal(await exists(path.join(dir, 'note.md')), false);
+      assert.equal(await exists(path.join(dir, stdout.trim())), true);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * The one that matters. Without a terminal there is nothing to answer a
+   * prompt, so the choice is between deleting silently and refusing. Refuse,
+   * with a sentence saying what to type instead.
+   */
+  test('refuses to delete unasked when nothing can answer', async () => {
+    const dir = await makeVault({ 'note.md': 'body\n' });
+    try {
+      const { code, stderr } = await run(['rm', 'note'], own(dir));
+
+      assert.equal(code, cli.EXIT.usage);
+      assert.match(stderr, /--yes/, `said "${stderr}"`);
+      assert.equal(await exists(path.join(dir, 'note.md')), true, 'deleted it anyway');
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('resolves a partial name the way the other commands do', async () => {
+    const dir = await makeVault({ 'budget 2026.md': 'x\n', 'other.md': 'y\n' });
+    try {
+      const { code } = await run(['rm', 'budget', '--yes'], own(dir));
+      assert.equal(code, cli.EXIT.ok);
+      assert.equal(await exists(path.join(dir, 'budget 2026.md')), false);
+      assert.equal(await exists(path.join(dir, 'other.md')), true);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('two matches is a question, not a coin toss', async () => {
+    const dir = await makeVault({ 'budget 2025.md': 'x\n', 'budget 2026.md': 'y\n' });
+    try {
+      const { code, stderr } = await run(['rm', 'budget', '--yes'], own(dir));
+
+      assert.equal(code, cli.EXIT.usage);
+      assert.match(stderr, /budget 2025\.md/);
+      assert.match(stderr, /budget 2026\.md/);
+      assert.equal(await exists(path.join(dir, 'budget 2025.md')), true, 'deleted one of them');
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('a note that is not there is a miss, not a crash', async () => {
+    const dir = await makeVault({});
+    try {
+      const { code } = await run(['rm', 'ghost', '--yes'], own(dir));
+      assert.equal(code, cli.EXIT.notFound);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('what it deleted comes back like anything else in the trash', async () => {
+    const dir = await makeVault({ 'note.md': 'worth keeping\n' });
+    try {
+      await run(['rm', 'note', '--yes'], own(dir));
+
+      const vault = new Vault(dir);
+      const [item] = await vault.trashList();
+      await vault.restore(item.trashed, item.path);
+
+      assert.equal(await fs.readFile(path.join(dir, 'note.md'), 'utf8'), 'worth keeping\n');
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('rm, with somebody there to answer', () => {
+  /**
+   * Driven directly rather than through a spawned process. Faking a TTY on a
+   * child is a fight, and the thing worth testing is the decision, not the
+   * terminal.
+   */
+  const answering = (answer) => async () => answer;
+
+  test('yes deletes it', async () => {
+    const dir = await makeVault({ 'note.md': 'x\n' });
+    try {
+      const code = await cli.rm(new Vault(dir), 'note', {
+        interactive: true,
+        ask: answering(true),
+      });
+      assert.equal(code, cli.EXIT.ok);
+      assert.equal(await exists(path.join(dir, 'note.md')), false);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('anything else leaves it alone', async () => {
+    const dir = await makeVault({ 'note.md': 'x\n' });
+    try {
+      const code = await cli.rm(new Vault(dir), 'note', {
+        interactive: true,
+        ask: answering(false),
+      });
+      assert.equal(code, cli.EXIT.ok, 'declining is not an error');
+      assert.equal(await exists(path.join(dir, 'note.md')), true);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('the question names the file, not what was typed', async () => {
+    // `dap rm budget` matching `budget 2026.md` on a substring is exactly how
+    // the wrong note gets deleted. The prompt is where that gets caught.
+    const dir = await makeVault({ 'budget 2026.md': 'x\n' });
+    let asked = '';
+    try {
+      await cli.rm(new Vault(dir), 'budget', {
+        interactive: true,
+        ask: async (q) => { asked = q; return false; },
+      });
+      assert.match(asked, /budget 2026\.md/, `asked "${asked}"`);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
     }
   });
 });

@@ -155,6 +155,71 @@ export async function neu(vault, name, { stdin = null } = {}) {
   return EXIT.ok;
 }
 
+/**
+ * Delete a note from a terminal.
+ *
+ * Two things make this different from the browser's delete rather than just a
+ * headless copy of it.
+ *
+ * It asks, because the app's rule is that destructive things ask — but it asks
+ * only when there is somebody there to answer. In a script there is nobody, and
+ * a prompt written to a pipe is a hang, not a safeguard. So a non-interactive
+ * run has to say `--yes` out loud instead.
+ *
+ * And it shows the resolved filename before doing anything. `dap rm budget`
+ * matches on a unique substring, which is exactly the convenience that makes
+ * deleting the wrong note possible; the confirmation exists more for that than
+ * for the deletion itself.
+ */
+export async function rm(vault, query, { yes = false, ask = askYesNo, interactive } = {}) {
+  const canAsk = interactive ?? Boolean(process.stdin.isTTY);
+
+  const found = await resolveNote(vault, query);
+  if (found.ambiguous) return reportAmbiguous(found.ambiguous);
+  if (found.error) {
+    err(found.error);
+    return EXIT.notFound;
+  }
+
+  if (!yes) {
+    if (!canAsk) {
+      err(`refusing to delete ${found.path} without being asked to`);
+      err('  nothing is here to answer a prompt — pass --yes if you meant it');
+      return EXIT.usage;
+    }
+    if (!(await ask(`delete ${found.path}?`))) {
+      err('left alone');
+      return EXIT.ok;
+    }
+  }
+
+  const result = await vault.trash(found.path);
+  if (!result.ok) {
+    err(`could not delete ${found.path}`);
+    return EXIT.notFound;
+  }
+
+  // Piped: the trash path alone, so it can be fed to something else.
+  out(isTTY() ? `moved ${result.path} to ${result.trashed}` : result.trashed);
+  return EXIT.ok;
+}
+
+/**
+ * The prompt goes to stderr, not stdout.
+ *
+ * stdout is the answer; a question printed there would end up inside whatever
+ * the output was piped into.
+ */
+async function askYesNo(question) {
+  const { createInterface } = await import('node:readline/promises');
+  const rl = createInterface({ input: process.stdin, output: process.stderr });
+  try {
+    return /^y(es)?$/i.test((await rl.question(`${question} [y/N] `)).trim());
+  } finally {
+    rl.close();
+  }
+}
+
 const ago = (ms) => {
   const s = Math.max(1, Math.round((Date.now() - ms) / 1000));
   if (s < 60) return 'just now';

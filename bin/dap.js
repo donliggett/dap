@@ -15,6 +15,7 @@ usage
   dap cat <note>            print a note as raw markdown
   dap path <note>           print its full path
   dap new <name>            create a note (body from stdin if piped)
+  dap rm <note>             move a note to .trash (asks first)
 
 options
   -C, --vault <folder>      which folder to use (default: \$DAP_VAULT, else .)
@@ -22,6 +23,7 @@ options
       --open                open a browser too
       --hostname <name>     also answer to this host (repeatable)
       --lan                 listen on every interface, not just localhost
+  -y, --yes                 don't ask before deleting
   -h, --help
 
 notes are .md files in a folder. that's the whole storage format. every command
@@ -34,6 +36,7 @@ piping
       dap find budget | xargs grep -l urgent
       vim "\$(dap path meeting)"
       pbpaste | dap new "from clipboard"
+      dap rm "old draft" --yes
 
 reaching dap from a phone
   put something in front of it that already does auth, and name the host:
@@ -67,6 +70,7 @@ try {
       open: { type: 'boolean', default: false },
       hostname: { type: 'string', multiple: true },
       lan: { type: 'boolean', default: false },
+      yes: { type: 'boolean', short: 'y', default: false },
       help: { type: 'boolean', short: 'h', default: false },
     },
   }));
@@ -79,7 +83,7 @@ if (values.help) {
   process.exit(cli.EXIT.ok);
 }
 
-const COMMANDS = new Set(['serve', 'ls', 'find', 'cat', 'path', 'new']);
+const COMMANDS = new Set(['serve', 'ls', 'find', 'cat', 'path', 'new', 'rm']);
 const first = positionals[0];
 const command = COMMANDS.has(first) ? first : 'serve';
 const rest = COMMANDS.has(first) ? positionals.slice(1) : positionals;
@@ -102,6 +106,7 @@ if (command !== 'serve') {
     case 'cat': code = await cli.cat(opened.vault, arg); break;
     case 'path': code = await cli.where(opened.vault, arg); break;
     case 'new': code = await cli.neu(opened.vault, arg, { stdin: await cli.readStdin() }); break;
+    case 'rm': code = await cli.rm(opened.vault, arg, { yes: values.yes }); break;
   }
   process.exit(code);
 }
