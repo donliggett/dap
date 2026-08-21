@@ -2,6 +2,7 @@ import { createEditor } from './editor/index.js';
 import { splitFrontmatter, joinFrontmatter } from './frontmatter.js';
 import { slugForFilename } from './naming.js';
 import { createSearch } from './search.js';
+import { trackKeyboard } from './keyboard.js';
 
 const $ = (sel) => document.querySelector(sel);
 const shell = $('.shell');
@@ -17,6 +18,7 @@ const els = {
   saveDot: $('[data-save-dot]'),
   saveText: $('[data-save-text]'),
   words: $('[data-word-count]'),
+  conflictBar: $('[data-conflict-bar]'),
   editorHost: $('[data-editor-host]'),
   empty: $('[data-empty-state]'),
   emptyPath: $('[data-empty-path]'),
@@ -30,6 +32,8 @@ const state = {
   dirty: false,
   // Carried verbatim from open to save. The editor never sees it.
   front: '',
+  // { theirs, hash } while the file on disk has moved out from under us.
+  conflict: null,
 };
 
 const { engine, editor: engineImpl, reason } = await createEditor();
@@ -62,6 +66,12 @@ let ceiling = null;
  */
 function scheduleSave() {
   state.dirty = true;
+  // Once the file has moved on disk, every save is a 409 we already know the
+  // answer to. Keep the edit, keep the bar up, stop asking.
+  if (state.conflict) {
+    setSaveState('conflict');
+    return;
+  }
   setSaveState('editing');
   clearTimeout(idle);
   idle = setTimeout(save, 500);
@@ -72,7 +82,7 @@ async function save() {
   clearTimeout(idle);
   clearTimeout(ceiling);
   idle = ceiling = null;
-  if (!state.path || !state.dirty) return;
+  if (!state.path || !state.dirty || state.conflict) return;
 
   const content = joinFrontmatter(state.front, editor.getMarkdown());
   setSaveState('saving');
@@ -80,12 +90,87 @@ async function save() {
   const { status, body } = await api.write(state.path, content, state.baseHash);
 
   if (status === 409) {
-    setSaveState('conflict');
+    enterConflict(body);
     return;
   }
   state.baseHash = body.hash;
   state.dirty = false;
   setSaveState('saved');
+  refreshList();
+}
+
+// ── the file changed underneath us ─────────────────────────────────────
+/**
+ * The server hands back what is actually on disk along with the 409, so by the
+ * time this runs we already hold both versions and nothing has been lost. All
+ * that is left is to say so and let someone choose — which is the part the
+ * previous build never did, leaving "changed on disk" in the status bar as a
+ * dead end while the edit sat in a tab waiting to be closed.
+ */
+function enterConflict(body) {
+  clearTimeout(idle);
+  clearTimeout(ceiling);
+  idle = ceiling = null;
+  state.conflict = { theirs: body.content ?? '', hash: body.hash };
+  shell.dataset.conflict = 'true';
+  setSaveState('conflict');
+}
+
+function leaveConflict() {
+  state.conflict = null;
+  shell.dataset.conflict = 'false';
+  els.conflictBar.classList.remove('is-urgent');
+}
+
+/** Mine wins. Write over disk, this time saying which version I saw. */
+async function keepMine() {
+  if (!state.conflict) return;
+  const content = joinFrontmatter(state.front, editor.getMarkdown());
+  const { status, body } = await api.write(state.path, content, state.conflict.hash);
+  if (status === 409) {
+    // It moved again between the 409 and the click. Still nothing lost.
+    state.conflict = { theirs: body.content ?? '', hash: body.hash };
+    return;
+  }
+  state.baseHash = body.hash;
+  state.dirty = false;
+  leaveConflict();
+  setSaveState('saved');
+  refreshList();
+}
+
+/** Disk wins. My edit goes away, but only because I said so. */
+function takeTheirs() {
+  if (!state.conflict) return;
+  const { theirs, hash } = state.conflict;
+  const { front, body } = splitFrontmatter(theirs);
+  state.front = front;
+  editor.setMarkdown(body);
+  state.baseHash = hash;
+  state.dirty = false;
+  els.source.textContent = theirs;
+  leaveConflict();
+  updateWords();
+  setSaveState('ready');
+}
+
+/**
+ * Nobody wins and nobody loses: my version lands beside the note under a free
+ * name and the note itself goes back to what is on disk. Same instinct as
+ * never refusing a duplicate filename — walking to a free name beats making
+ * someone pick which version to destroy while they are already annoyed.
+ */
+async function saveMineAsCopy() {
+  if (!state.conflict) return;
+  const mine = joinFrontmatter(state.front, editor.getMarkdown());
+  const stem = state.path.replace(/\.md$/i, '');
+  const taken = new Set(state.notes.map((n) => n.path.toLowerCase()));
+
+  let copy = `${stem} (conflict).md`;
+  for (let n = 2; taken.has(copy.toLowerCase()); n++) copy = `${stem} (conflict ${n}).md`;
+
+  await api.write(copy, mine, null);
+  takeTheirs();
   refreshList();
 }
 
@@ -134,6 +219,9 @@ async function refreshList() {
 }
 
 async function open(path) {
+  // Walking away from a conflicted note would strand the edit in a closed tab.
+  // One click resolves it; refusing until then beats a silent discard.
+  if (state.conflict) return nudgeConflict();
   if (state.dirty) await save();
   const note = await api.read(path);
   state.path = note.path;
@@ -243,6 +331,7 @@ let naming = false;
 
 function beginNaming() {
   if (naming) return;
+  if (state.conflict) return nudgeConflict();
   naming = true;
   els.docName.hidden = true;
   els.nameInput.hidden = false;
@@ -297,6 +386,17 @@ els.nameInput.addEventListener('keydown', (e) => {
 });
 els.nameInput.addEventListener('blur', () => endNaming(true));
 
+/** Say no visibly rather than doing nothing, which reads as a broken click. */
+function nudgeConflict() {
+  els.conflictBar.classList.remove('is-urgent');
+  void els.conflictBar.offsetWidth; // restart the animation
+  els.conflictBar.classList.add('is-urgent');
+}
+
+$('[data-conflict-keep]').addEventListener('click', keepMine);
+$('[data-conflict-theirs]').addEventListener('click', takeTheirs);
+$('[data-conflict-copy]').addEventListener('click', saveMineAsCopy);
+
 const search = createSearch({
   root: $('[data-search]'),
   onOpen: (path) => open(path),
@@ -327,6 +427,8 @@ try {
   if (saved) document.documentElement.dataset.theme = saved;
 } catch { /* private mode */ }
 
+shell.dataset.conflict = 'false';
+trackKeyboard();
 await refreshList();
 if (state.notes.length) await open(state.notes[0].path);
 else setSaveState('ready');

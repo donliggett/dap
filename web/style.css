@@ -26,6 +26,9 @@
   --r-md: 9px;
   --r-lg: 14px;
 
+  /* How much of the screen the on-screen keyboard is eating. See keyboard.js. */
+  --kb: 0px;
+
   --pad: 16px;
   --shadow: 0 1px 2px rgb(16 18 24 / 6%), 0 8px 24px -12px rgb(16 18 24 / 18%);
 }
@@ -68,7 +71,11 @@
 
 * { box-sizing: border-box; }
 
-html, body { height: 100%; margin: 0; }
+html, body { margin: 0; }
+html { height: 100%; }
+/* Not 100%: on iOS the layout viewport stays full height with the keyboard up,
+   so the status bar and anything else anchored low renders under the keys. */
+body { height: calc(100% - var(--kb)); }
 
 body {
   background: var(--ground);
@@ -708,6 +715,11 @@ textarea.note-plain::placeholder { color: var(--ink-faint); }
 }
 .search-overlay[hidden] { display: none; }
 
+/* With the keyboard up there is no room to be precious about margins: the
+   panel takes the whole visible strip so results are not pushed under it. */
+:root[data-keyboard="up"] .search-overlay { padding-top: 10px; padding-bottom: 10px; }
+:root[data-keyboard="up"] .search-panel { max-height: 100%; }
+
 .search-panel {
   width: min(620px, 100%);
   max-height: 76%;
@@ -803,4 +815,76 @@ textarea.note-plain::placeholder { color: var(--ink-faint); }
   border-radius: 3px;
   padding: 0 4px;
   margin-right: 2px;
+}
+
+/* ── the note changed on disk ───────────────────────────────────────────
+   Sits above the status bar rather than over the text, because the whole
+   point is that you can still see and compare what you wrote. It is the one
+   piece of chrome allowed to use --danger; if this is on screen, something
+   genuinely needs a decision. */
+.conflict { display: none; }
+.shell[data-conflict="true"] .conflict {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  padding: 10px 12px;
+  border-top: 1px solid color-mix(in srgb, var(--danger) 40%, var(--line));
+  background: color-mix(in srgb, var(--danger) 7%, var(--surface));
+}
+.conflict-say {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  flex: 1 1 260px;
+}
+.conflict-say strong {
+  font-family: var(--ui);
+  font-size: 13px;
+  font-weight: 600;
+  font-stretch: 92%;
+  color: var(--ink);
+}
+.conflict-say span {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-dim);
+}
+.conflict-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.cf-btn {
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--ui);
+  font-size: 12px;
+  font-stretch: 92%;
+  padding: 6px 11px;
+  cursor: pointer;
+}
+.cf-btn:hover { border-color: var(--ink-faint); }
+/* Keeping both is the one choice that cannot cost anything, so it reads as
+   the way out rather than as one of three equal risks. */
+.cf-safe {
+  border-color: transparent;
+  background: var(--accent-lit);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+.cf-safe:hover { filter: brightness(1.05); }
+
+/* Asked to leave a note mid-conflict: say no, once, visibly. */
+.conflict.is-urgent { animation: cf-nudge 420ms ease; }
+@keyframes cf-nudge {
+  0%, 100% { transform: none; }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .conflict.is-urgent { animation: none; outline: 2px solid var(--danger); }
 }

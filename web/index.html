@@ -130,6 +130,20 @@
     </main>
   </div>
 
+  <!-- Only ever on screen when there is a decision to make, and it names the
+       three outcomes rather than asking "are you sure". -->
+  <div class="conflict" data-conflict-bar role="alertdialog" aria-label="This note changed on disk">
+    <div class="conflict-say">
+      <strong>this note changed on disk</strong>
+      <span>something else wrote to it while you were typing — nothing is lost yet.</span>
+    </div>
+    <div class="conflict-acts">
+      <button class="cf-btn cf-safe" type="button" data-conflict-copy>save mine as a copy</button>
+      <button class="cf-btn" type="button" data-conflict-keep>keep mine</button>
+      <button class="cf-btn" type="button" data-conflict-theirs>load theirs</button>
+    </div>
+  </div>
+
   <footer class="status">
     <span class="saved"><span class="dot" data-save-dot></span><span data-save-text>ready</span></span>
     <span class="hide-narrow" data-status-path></span>
