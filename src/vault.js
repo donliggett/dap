@@ -11,6 +11,10 @@ import crypto from 'node:crypto';
 
 const NOTE_EXTS = new Set(['.md', '.txt']);
 
+/** Deleted notes live here. Leading dot, so the walker never sees them. */
+const TRASH = '.trash';
+const MANIFEST = '.trash.json';
+
 export class Vault {
   constructor(root) {
     this.root = path.resolve(root);
@@ -147,7 +151,92 @@ export class Vault {
     const dest = await this.abs(trashed);
     await fs.mkdir(path.dirname(dest), { recursive: true });
     await moveFile(abs, dest);
+    await this.#remember({ trashed, path: rel, deletedAt: now.getTime() });
     return { ok: true, path: rel, trashed };
+  }
+
+  /**
+   * Where each trashed note came from.
+   *
+   * Trash names are flattened, so `a/note.md` becomes `.trash/note <stamp>.md`
+   * and the folder is gone. Undo survives that only because the browser tab
+   * still holds the original path in memory — a restore run tomorrow has
+   * nothing, and would drop every nested note at the vault root.
+   *
+   * So the folder keeps its own receipt. It lives inside `.trash/` and starts
+   * with a dot, which means the note walker skips it twice over.
+   */
+  async #manifest() {
+    try {
+      const raw = await fs.readFile(path.join(this.root, TRASH, MANIFEST), 'utf8');
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed.filter((e) => e && typeof e.trashed === 'string') : [];
+    } catch {
+      // Absent, unreadable, or hand-edited into nonsense. The files are the
+      // truth; this is only a convenience, and it must never be the reason a
+      // restore fails.
+      return [];
+    }
+  }
+
+  async #writeManifest(entries) {
+    const dir = path.join(this.root, TRASH);
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(path.join(dir, MANIFEST), JSON.stringify(entries, null, 1));
+  }
+
+  async #remember(entry) {
+    const entries = await this.#manifest();
+    entries.push(entry);
+    await this.#writeManifest(entries);
+  }
+
+  async #forget(trashed) {
+    const entries = await this.#manifest();
+    await this.#writeManifest(entries.filter((e) => e.trashed !== trashed));
+  }
+
+  /**
+   * Everything sitting in the trash, newest first.
+   *
+   * Built from the files, not the manifest. A note dragged into `.trash/` by
+   * hand, or one trashed before this manifest existed, still has to show up and
+   * still has to be restorable — so the manifest only supplies the original
+   * path, and its absence costs you the folder, not the note.
+   */
+  async trashList() {
+    const dir = path.join(this.root, TRASH);
+    let entries;
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true });
+    } catch {
+      return [];
+    }
+
+    const known = new Map((await this.#manifest()).map((e) => [e.trashed, e]));
+    const out = [];
+
+    for (const e of entries) {
+      if (!e.isFile() || e.name.startsWith('.')) continue;
+      if (!NOTE_EXTS.has(path.extname(e.name).toLowerCase())) continue;
+
+      const trashed = `${TRASH}/${e.name}`;
+      const st = await fs.stat(path.join(dir, e.name)).catch(() => null);
+      if (!st) continue;
+
+      const record = known.get(trashed);
+      out.push({
+        trashed,
+        // No receipt means it goes back to the root under the name it has now,
+        // stamp and all. Ugly, and better than refusing.
+        path: record?.path ?? e.name,
+        orphan: !record,
+        deletedAt: record?.deletedAt ?? Math.round(st.mtimeMs),
+        size: st.size,
+      });
+    }
+
+    return out.sort((a, b) => b.deletedAt - a.deletedAt);
   }
 
   /**
@@ -176,7 +265,33 @@ export class Vault {
     const to = await this.abs(target);
     await fs.mkdir(path.dirname(to), { recursive: true });
     await moveFile(from, to);
+    await this.#forget(trashed);
     return { ok: true, path: target, restoredFrom: trashed };
+  }
+
+  /**
+   * Put everything back.
+   *
+   * One failure does not stop the rest — a single unreadable file should cost
+   * you that file, not the other forty. What could not be restored comes back
+   * in the result so the caller can say so out loud rather than silently
+   * reporting success.
+   */
+  async restoreAll() {
+    const restored = [];
+    const failed = [];
+
+    for (const item of await this.trashList()) {
+      try {
+        const res = await this.restore(item.trashed, item.path);
+        if (res.ok) restored.push(res.path);
+        else failed.push(item.trashed);
+      } catch {
+        failed.push(item.trashed);
+      }
+    }
+
+    return { ok: true, restored, failed };
   }
 }
 

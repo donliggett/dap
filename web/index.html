@@ -110,7 +110,7 @@
           <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 8h16M4 14h16M9 4l-1.5 16M16.5 4L15 20"/></svg>
           <span>tags</span><span class="count">0</span>
         </button>
-        <button class="nav-item" type="button">
+        <button class="nav-item" type="button" data-open-settings>
           <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 4v2M12 18v2M4 12h2M18 12h2M6.3 6.3l1.4 1.4M16.3 16.3l1.4 1.4M17.7 6.3l-1.4 1.4M7.7 16.3l-1.4 1.4"/></svg>
           <span>settings</span>
         </button>
@@ -160,6 +160,43 @@
     <span class="hide-narrow" data-word-count></span>
     <button class="theme-btn" type="button" data-theme-toggle aria-label="Toggle theme">◐</button>
   </footer>
+
+  <!-- Settings. Full screen on a phone, a centred sheet sitting slightly above
+       centre on anything larger. About is the hero — dap's whole pitch is that
+       your notes are files in a folder, so the panel leads with which folder. -->
+  <dialog class="settings" data-settings aria-label="Settings">
+    <div class="set-bar">
+      <span class="set-title">settings</span>
+      <button class="icon-btn" type="button" aria-label="Close settings" data-settings-close>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+          <path d="M6 6l12 12M18 6L6 18"/>
+        </svg>
+      </button>
+    </div>
+
+    <div class="set-scroll">
+      <section class="about">
+        <p class="about-mark"><span class="dot"></span>dap</p>
+        <p class="about-pitch">a small, local notetaking app.<br>your notes are files.</p>
+
+        <dl class="about-facts">
+          <div><dt>folder</dt><dd class="mono" data-about-vault>—</dd></div>
+          <div><dt>notes</dt><dd class="mono" data-about-notes>—</dd></div>
+          <div><dt>version</dt><dd class="mono" data-about-version>—</dd></div>
+        </dl>
+      </section>
+
+      <section class="set-section">
+        <h3 class="set-h">trash</h3>
+        <p class="set-note" data-trash-summary>nothing deleted yet.</p>
+        <div class="set-acts">
+          <button class="cf-btn cf-safe" type="button" data-trash-restore disabled>restore trash</button>
+          <button class="cf-btn" type="button" data-trash-empty disabled
+                  title="not built yet — clear .trash from your file manager for now">empty trash</button>
+        </div>
+      </section>
+    </div>
+  </dialog>
 
   <!-- A real <dialog>, so modality, focus trapping and Escape are the
        browser's job rather than three bugs of mine. Cancel holds autofocus:

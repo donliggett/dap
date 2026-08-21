@@ -23,6 +23,12 @@ const els = {
   undoBtn: $('[data-undo]'),
   confirmDialog: $('[data-confirm-delete]'),
   confirmName: $('[data-confirm-name]'),
+  settings: $('[data-settings]'),
+  aboutVault: $('[data-about-vault]'),
+  aboutNotes: $('[data-about-notes]'),
+  aboutVersion: $('[data-about-version]'),
+  trashSummary: $('[data-trash-summary]'),
+  trashRestore: $('[data-trash-restore]'),
   editorHost: $('[data-editor-host]'),
   empty: $('[data-empty-state]'),
   emptyPath: $('[data-empty-path]'),
@@ -68,6 +74,8 @@ const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ trashed, path }),
     }).then((r) => r.json()),
+  about: () => fetch('/api/about').then((r) => r.json()),
+  restoreTrash: () => fetch('/api/trash/restore', { method: 'POST' }).then((r) => r.json()),
 };
 
 // ── saving ─────────────────────────────────────────────────────────────
@@ -499,6 +507,78 @@ els.nameInput.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); endNaming(false); }
 });
 els.nameInput.addEventListener('blur', () => endNaming(true));
+
+// ── settings ───────────────────────────────────────────────────────────
+/**
+ * Everything the panel shows is read from the server when it opens, never
+ * cached in the page. The version, the note count and the trash count all go
+ * stale the moment anything happens, and a settings panel quietly showing
+ * yesterday's numbers is worse than one that shows none.
+ */
+async function openSettings() {
+  shell.dataset.drawer = 'closed';
+  els.settings.showModal();
+  await refreshSettings();
+}
+
+async function refreshSettings() {
+  const about = await api.about();
+  els.aboutVault.textContent = about.vault;
+  els.aboutNotes.textContent = String(about.notes);
+  els.aboutVersion.textContent = about.version;
+  paintTrash(about.trash);
+}
+
+function paintTrash(count) {
+  els.trashRestore.disabled = count === 0;
+  els.trashSummary.textContent =
+    count === 0
+      ? 'nothing deleted yet. deleted notes move to a .trash folder inside your notes folder.'
+      : `${count} deleted note${count === 1 ? '' : 's'} waiting in .trash, inside your notes folder.`;
+}
+
+/**
+ * Put everything back at once.
+ *
+ * Nothing is overwritten doing it: a note whose name was taken since the
+ * delete comes back as "note 2.md", the same walk-to-a-free-name that stops
+ * two untitled notes colliding. Restoring can add files; it can never replace
+ * one.
+ */
+async function restoreTrash() {
+  els.trashRestore.disabled = true;
+  els.trashSummary.textContent = 'restoring…';
+
+  const result = await api.restoreTrash();
+  const n = result.restored?.length ?? 0;
+
+  await refreshList();
+  clearUndo();
+  await refreshSettings();
+
+  const failed = result.failed?.length ?? 0;
+  els.trashSummary.textContent =
+    `restored ${n} note${n === 1 ? '' : 's'}` +
+    (failed ? ` — ${failed} could not be read and are still in .trash.` : '.');
+
+  // Nothing was open before if the vault was empty; show what just came back.
+  if (!state.path && state.notes.length) await open(state.notes[0].path);
+}
+
+$('[data-open-settings]').addEventListener('click', openSettings);
+$('[data-settings-close]').addEventListener('click', () => els.settings.close());
+els.trashRestore.addEventListener('click', restoreTrash);
+// Clicking the dimmed area closes it. Testing the coordinates rather than just
+// the event target matters here: full screen on a phone, the dialog's own
+// safe-area padding *is* the element, so a tap near the notch would otherwise
+// count as "outside" and shut the panel.
+els.settings.addEventListener('click', (e) => {
+  if (e.target !== els.settings) return;
+  const r = els.settings.getBoundingClientRect();
+  const outside =
+    e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+  if (outside) els.settings.close();
+});
 
 /** Say no visibly rather than doing nothing, which reads as a broken click. */
 function nudgeConflict() {

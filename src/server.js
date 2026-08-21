@@ -15,6 +15,25 @@ const MIME = {
 const LOOPBACK = ['localhost', '127.0.0.1', '[::1]', '::1'];
 
 /**
+ * The version, read once from the package that is actually running.
+ *
+ * Unknown rather than fatal if it cannot be read: an about box is not worth
+ * taking the server down for, and dap runs from a git checkout as often as
+ * from an install.
+ */
+let versionCache;
+async function packageVersion() {
+  if (versionCache !== undefined) return versionCache;
+  try {
+    const raw = await fs.readFile(path.resolve(WEB, '../package.json'), 'utf8');
+    versionCache = JSON.parse(raw).version ?? 'unknown';
+  } catch {
+    versionCache = 'unknown';
+  }
+  return versionCache;
+}
+
+/**
  * Which Host headers we answer to.
  *
  * This is the DNS-rebinding guard: an attacker can point their own domain at
@@ -92,6 +111,28 @@ export async function serve({ vault: vaultPath, port = 4747, host = '127.0.0.1',
         const rel = url.searchParams.get('path');
         const result = await vault.trash(rel);
         return json(res, result.missing ? 404 : 200, result);
+      }
+
+      // Everything the about panel says about itself, measured rather than
+      // hardcoded in the page — a version number that has to be updated in two
+      // places is a version number that will be wrong in one of them.
+      if (route === 'GET /api/about') {
+        const [notes, trash] = await Promise.all([vault.list(), vault.trashList()]);
+        return json(res, 200, {
+          version: await packageVersion(),
+          vault: vault.root,
+          notes: notes.length,
+          trash: trash.length,
+        });
+      }
+
+      if (route === 'GET /api/trash') {
+        const items = await vault.trashList();
+        return json(res, 200, { items, count: items.length });
+      }
+
+      if (route === 'POST /api/trash/restore') {
+        return json(res, 200, await vault.restoreAll());
       }
 
       if (route === 'POST /api/restore') {

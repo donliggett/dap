@@ -996,3 +996,156 @@ textarea.note-plain::placeholder { color: var(--ink-faint); }
   .icon-btn { width: 44px; height: 44px; }
   .icon-btn.is-delete { margin-right: 14px; }
 }
+
+/* ── settings ───────────────────────────────────────────────────────────
+   Full screen on a phone, a sheet above centre on anything wider. Native
+   <dialog> again: modality, Escape and the focus trap come free, and the
+   only thing left to do is stop it looking like a system alert. */
+.settings {
+  border: 0;
+  padding: 0;
+  color: var(--ink);
+  background: var(--surface);
+  max-width: none;
+  max-height: none;
+  overflow: hidden;
+}
+.settings::backdrop {
+  background: color-mix(in srgb, #000 52%, transparent);
+  backdrop-filter: blur(3px);
+}
+
+/* Phone: the sheet is the screen. Padding respects the notch and the home
+   indicator, which viewport-fit=cover makes real. */
+.settings {
+  width: 100vw;
+  height: 100dvh;
+  margin: 0;
+  border-radius: 0;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+@media (min-width: 600px) {
+  .settings {
+    width: min(480px, calc(100vw - 48px));
+    height: auto;
+    /* The UA stylesheet pins a modal dialog with inset: 0. With top and bottom
+       both set, height:auto does not shrink-wrap -- it stretches to fill and
+       then clamps at max-height, leaving a tall empty box below the content
+       that reads as a panel which half-loaded. Releasing the bottom edge lets
+       it hug what is in it, and margin-top does the positioning. */
+    bottom: auto;
+    max-height: min(680px, calc(100vh - 96px));
+    /* Centred horizontally, riding a little above centre — a dialog pinned to
+       the exact middle reads as an error, not a place you meant to go. */
+    margin: 9vh auto auto;
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow);
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+}
+
+.settings { display: flex; flex-direction: column; }
+.settings:not([open]) { display: none; }
+
+.set-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px 8px 16px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.set-title {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+/* Fills the screen on a phone, hugs its content on a desktop. `flex: 1` in
+   both cases makes the sheet grow to its max-height with dead space under the
+   buttons, which reads as a panel that failed to load the rest of itself. */
+.set-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 26px 20px 20px; }
+@media (min-width: 600px) {
+  .set-scroll { flex: 0 1 auto; }
+}
+
+/* The hero. Big, quiet, and about the folder more than the software. */
+.about { text-align: center; padding-bottom: 24px; }
+.about-mark {
+  margin: 0;
+  font-size: 40px;
+  font-weight: 600;
+  font-stretch: 78%;
+  letter-spacing: -.03em;
+  line-height: 1;
+}
+.about-mark .dot {
+  display: inline-block;
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  background: var(--accent-lit);
+  margin-right: 9px;
+  vertical-align: middle;
+}
+.about-pitch {
+  margin: 12px 0 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-dim);
+}
+
+.about-facts {
+  margin: 22px 0 0;
+  display: grid;
+  gap: 1px;
+  background: var(--line-soft);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  text-align: left;
+}
+.about-facts > div {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 9px 12px;
+  background: var(--surface);
+}
+.about-facts dt {
+  flex: none;
+  width: 62px;
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+.about-facts dd {
+  margin: 0;
+  min-width: 0;
+  font-size: 12px;
+  /* The vault path is the one thing here that can be arbitrarily long, and it
+     is also the thing worth reading in full. Wrap it rather than clip it. */
+  overflow-wrap: anywhere;
+}
+.about-facts .mono { font-family: var(--mono); }
+
+.set-section { border-top: 1px solid var(--line-soft); padding-top: 20px; }
+.set-h {
+  margin: 0 0 5px;
+  font-size: 13px;
+  font-weight: 600;
+  font-stretch: 92%;
+}
+.set-note { margin: 0 0 13px; font-size: 12px; color: var(--ink-dim); }
+.set-acts { display: flex; flex-wrap: wrap; gap: 8px; }
+.set-acts .cf-btn { padding: 9px 14px; }
+.set-acts .cf-btn:disabled {
+  opacity: .45;
+  cursor: default;
+  filter: none;
+}
+@media (pointer: coarse) {
+  .set-acts .cf-btn { flex: 1; padding: 13px 14px; }
+}

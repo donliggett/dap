@@ -193,3 +193,133 @@ describe('over http', () => {
     });
   });
 });
+
+/**
+ * The receipt.
+ *
+ * Trash names are flattened, so the folder a note came from is not recoverable
+ * from the filename. Undo hides that — the browser tab still holds the original
+ * path — and it only surfaced when a restore button had to work from the trash
+ * alone, days after the delete. Without this, every nested note comes back to
+ * the vault root.
+ */
+describe('remembering where things came from', () => {
+  test('a note from a subfolder goes back to that subfolder', async () => {
+    const root = await makeVault({ 'projects/dap/notes.md': 'deep\n' });
+    const vault = new Vault(root);
+
+    const { trashed } = await vault.trash('projects/dap/notes.md', { now: FIXED });
+    // Restore with no memory of the original path — as the settings panel does.
+    const [item] = await vault.trashList();
+    const back = await vault.restore(item.trashed, item.path);
+
+    assert.equal(back.path, 'projects/dap/notes.md');
+    assert.equal(await fs.readFile(at(root, 'projects/dap/notes.md'), 'utf8'), 'deep\n');
+    assert.equal(trashed, item.trashed);
+    await fs.rm(root, { recursive: true, force: true });
+  });
+
+  test('the manifest is invisible to the note list', async () => {
+    const root = await makeVault({ 'note.md': 'x\n' });
+    const vault = new Vault(root);
+    await vault.trash('note.md', { now: FIXED });
+
+    assert.deepEqual(await vault.list(), []);
+    assert.equal(await exists(at(root, '.trash/.trash.json')), true, 'no receipt was written');
+    await fs.rm(root, { recursive: true, force: true });
+  });
+
+  test('a restored note stops being listed as trash', async () => {
+    const root = await makeVault({ 'note.md': 'x\n' });
+    const vault = new Vault(root);
+    await vault.trash('note.md', { now: FIXED });
+    const [item] = await vault.trashList();
+    await vault.restore(item.trashed, item.path);
+
+    assert.deepEqual(await vault.trashList(), []);
+    await fs.rm(root, { recursive: true, force: true });
+  });
+
+  /**
+   * The manifest is a convenience, never the truth. A file dragged into
+   * `.trash/` by hand, or trashed by a build that predates the manifest, still
+   * has to be visible and still has to come back.
+   */
+  test('a file with no receipt is still listed and still restorable', async () => {
+    const root = await makeVault({});
+    const vault = new Vault(root);
+    await fs.mkdir(at(root, '.trash'), { recursive: true });
+    await fs.writeFile(at(root, '.trash/stray.md'), 'dragged in by hand\n');
+
+    const [item] = await vault.trashList();
+    assert.equal(item.orphan, true);
+    assert.equal(item.path, 'stray.md');
+
+    const back = await vault.restore(item.trashed, item.path);
+    assert.equal(back.path, 'stray.md');
+    assert.equal(await fs.readFile(at(root, 'stray.md'), 'utf8'), 'dragged in by hand\n');
+    await fs.rm(root, { recursive: true, force: true });
+  });
+
+  test('a corrupt manifest costs the folder, not the note', async () => {
+    const root = await makeVault({ 'a/note.md': 'x\n' });
+    const vault = new Vault(root);
+    await vault.trash('a/note.md', { now: FIXED });
+    await fs.writeFile(at(root, '.trash/.trash.json'), '{ this is not json');
+
+    const [item] = await vault.trashList();
+    assert.equal(item.orphan, true, 'a broken receipt should not hide the file');
+
+    const back = await vault.restore(item.trashed, item.path);
+    assert.equal(await fs.readFile(at(root, back.path), 'utf8'), 'x\n');
+    await fs.rm(root, { recursive: true, force: true });
+  });
+});
+
+describe('restoring everything', () => {
+  test('puts every note back where it belongs', async () => {
+    const root = await makeVault({
+      'one.md': '1\n',
+      'folder/two.md': '2\n',
+      'folder/deep/three.md': '3\n',
+    });
+    const vault = new Vault(root);
+    for (const rel of ['one.md', 'folder/two.md', 'folder/deep/three.md']) {
+      await vault.trash(rel, { now: FIXED });
+    }
+    assert.deepEqual(await vault.list(), []);
+
+    const res = await vault.restoreAll();
+
+    assert.equal(res.restored.length, 3);
+    assert.deepEqual(res.failed, []);
+    assert.deepEqual(
+      (await vault.list()).map((n) => n.path).sort(),
+      ['folder/deep/three.md', 'folder/two.md', 'one.md'],
+    );
+    assert.deepEqual(await vault.trashList(), []);
+    await fs.rm(root, { recursive: true, force: true });
+  });
+
+  test('an empty trash is not an error', async () => {
+    const root = await makeVault({ 'note.md': 'x\n' });
+    const res = await new Vault(root).restoreAll();
+    assert.deepEqual(res, { ok: true, restored: [], failed: [] });
+    await fs.rm(root, { recursive: true, force: true });
+  });
+
+  test('a name taken back since the delete does not cost the restore', async () => {
+    const root = await makeVault({ 'note.md': 'the old one\n' });
+    const vault = new Vault(root);
+    await vault.trash('note.md', { now: FIXED });
+    await vault.write('note.md', 'the new one\n', null);
+
+    const res = await vault.restoreAll();
+
+    assert.equal(res.restored.length, 1);
+    assert.notEqual(res.restored[0], 'note.md');
+    assert.equal(await fs.readFile(at(root, 'note.md'), 'utf8'), 'the new one\n');
+    assert.equal(await fs.readFile(at(root, res.restored[0]), 'utf8'), 'the old one\n');
+    await fs.rm(root, { recursive: true, force: true });
+  });
+});
