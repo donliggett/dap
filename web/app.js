@@ -3,6 +3,7 @@ import { splitFrontmatter, joinFrontmatter } from './frontmatter.js';
 import { slugForFilename } from './naming.js';
 import { createSearch } from './search.js';
 import { trackKeyboard } from './keyboard.js';
+import { toBrowser, toDisk } from './attach-rewrite.js';
 
 const $ = (sel) => document.querySelector(sel);
 const shell = $('.shell');
@@ -56,6 +57,24 @@ if (reason) console.info(`dap: using the plain editor — ${reason}`);
 // Whichever engine mounted, its editable is the single [data-editor].
 els.editor = document.querySelector('[data-editor]');
 
+/**
+ * The editor never sees a disk path, and the disk never sees a browser URL.
+ *
+ * `../attachments/x.png` is meaningless to an <img> served from `/`, so image
+ * sources are swapped on the way in and swapped back on the way out. Every
+ * read and write of the editor goes through this pair — one that skips the
+ * conversion is the asymmetry that rewrites notes on open.
+ *
+ * The plain engine is exempt on purpose. It shows raw markdown in a textarea,
+ * where an image cannot render anyway and a `/api/file?path=` URL would just be
+ * noise in the middle of the source someone came there to read.
+ */
+const rendersImages = editor.capabilities.includes('image');
+const readEditor = () =>
+  rendersImages ? toDisk(state.path ?? '', editor.getMarkdown()) : editor.getMarkdown();
+const writeEditor = (md) =>
+  editor.setMarkdown(rendersImages ? toBrowser(state.path ?? '', md) : md);
+
 // ── api ────────────────────────────────────────────────────────────────
 const api = {
   list: () => fetch('/api/notes').then((r) => r.json()),
@@ -106,7 +125,7 @@ async function save() {
   idle = ceiling = null;
   if (!state.path || !state.dirty || state.conflict) return;
 
-  const content = joinFrontmatter(state.front, editor.getMarkdown());
+  const content = joinFrontmatter(state.front, readEditor());
   setSaveState('saving');
 
   const { status, body } = await api.write(state.path, content, state.baseHash);
@@ -147,7 +166,7 @@ function leaveConflict() {
 /** Mine wins. Write over disk, this time saying which version I saw. */
 async function keepMine() {
   if (!state.conflict) return;
-  const content = joinFrontmatter(state.front, editor.getMarkdown());
+  const content = joinFrontmatter(state.front, readEditor());
   const { status, body } = await api.write(state.path, content, state.conflict.hash);
   if (status === 409) {
     // It moved again between the 409 and the click. Still nothing lost.
@@ -167,7 +186,7 @@ function takeTheirs() {
   const { theirs, hash } = state.conflict;
   const { front, body } = splitFrontmatter(theirs);
   state.front = front;
-  editor.setMarkdown(body);
+  writeEditor(body);
   state.baseHash = hash;
   state.dirty = false;
   els.source.textContent = theirs;
@@ -184,7 +203,7 @@ function takeTheirs() {
  */
 async function saveMineAsCopy() {
   if (!state.conflict) return;
-  const mine = joinFrontmatter(state.front, editor.getMarkdown());
+  const mine = joinFrontmatter(state.front, readEditor());
   const stem = state.path.replace(/\.md$/i, '');
   const taken = new Set(state.notes.map((n) => n.path.toLowerCase()));
 
@@ -251,7 +270,7 @@ async function deleteCurrent() {
   await refreshList();
   if (state.notes.length) await open(state.notes[0].path);
   else {
-    editor.setMarkdown('');
+    writeEditor('');
     state.front = '';
     els.source.textContent = '';
     updateWords();
@@ -352,7 +371,7 @@ async function open(path) {
 
   const { front, body } = splitFrontmatter(note.content);
   state.front = front;
-  editor.setMarkdown(body);
+  writeEditor(body);
   els.source.textContent = note.content;
   applyPath(note.path);
   updateWords();
@@ -363,7 +382,7 @@ async function open(path) {
 }
 
 function updateWords() {
-  const n = editor.getMarkdown().trim().split(/\s+/).filter(Boolean).length;
+  const n = readEditor().trim().split(/\s+/).filter(Boolean).length;
   els.words.textContent = `${n} word${n === 1 ? '' : 's'}`;
 }
 
@@ -378,7 +397,7 @@ const ago = (ms) => {
 // ── wiring ─────────────────────────────────────────────────────────────
 editor.onChange(() => {
   updateWords();
-  els.source.textContent = joinFrontmatter(state.front, editor.getMarkdown());
+  els.source.textContent = joinFrontmatter(state.front, readEditor());
   refreshToolbar();
   scheduleSave();
 });
@@ -423,7 +442,7 @@ for (const b of modeBtns) {
     shell.dataset.mode = b.dataset.modeBtn;
     for (const o of modeBtns) o.setAttribute('aria-pressed', String(o === b));
     if (b.dataset.modeBtn === 'source') {
-      els.source.textContent = joinFrontmatter(state.front, editor.getMarkdown());
+      els.source.textContent = joinFrontmatter(state.front, readEditor());
     }
   });
 }

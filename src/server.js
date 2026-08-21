@@ -126,6 +126,60 @@ export async function serve({ vault: vaultPath, port = 4747, host = '127.0.0.1',
         });
       }
 
+      /**
+       * Store an image. The name is a hint for the readable half of the
+       * filename; the *type* comes from the bytes and nothing else.
+       */
+      if (route === 'POST /api/attachment') {
+        let body;
+        try {
+          body = await readBinary(req, MAX_ATTACHMENT);
+        } catch (err) {
+          if (err instanceof TooBig) {
+            return json(res, 413, {
+              error: 'that image is too large',
+              limit: MAX_ATTACHMENT,
+            });
+          }
+          throw err;
+        }
+
+        const result = await vault.attach(url.searchParams.get('name') ?? '', body);
+        if (!result.ok) {
+          return json(res, 415, {
+            error: 'that is not an image dap can store',
+            hint: 'png, jpeg, gif or webp — svg is converted before it gets here',
+          });
+        }
+        return json(res, 200, result);
+      }
+
+      /**
+       * Serve a stored image back.
+       *
+       * Not a general file route: `readImage` refuses anything that does not
+       * sniff as an image, so an .html file sitting in the notes folder cannot
+       * be served as markup from the origin that holds every note.
+       */
+      if (route === 'GET /api/file') {
+        const rel = url.searchParams.get('path');
+        const file = await vault.readImage(rel);
+        if (!file) return json(res, 404, { error: 'no such image' });
+
+        res.writeHead(200, {
+          'Content-Type': file.mime,
+          'Content-Length': file.bytes.length,
+          'X-Content-Type-Options': 'nosniff',
+          // Our own filenames end in a hash of their content, so they can never
+          // mean anything else and are safe to keep forever. A file dragged into
+          // the folder by hand has no such promise and gets revalidated.
+          'Cache-Control': HASHED_NAME.test(rel)
+            ? 'private, max-age=31536000, immutable'
+            : 'no-cache',
+        });
+        return res.end(file.bytes);
+      }
+
       if (route === 'GET /api/trash') {
         const items = await vault.trashList();
         return json(res, 200, { items, count: items.length });
@@ -186,6 +240,45 @@ async function serveStatic(res, pathname) {
   } catch {
     json(res, 404, { error: 'not found' });
   }
+}
+
+/** Not a real limit — a floor against pasting a RAW file by accident. */
+const MAX_ATTACHMENT = 10 * 1024 * 1024;
+
+/** `whiteboard-a3f9c2e10b4d7e88.png` — a name that cannot mean anything else. */
+const HASHED_NAME = /-[0-9a-f]{16}\.[a-z0-9]+$/i;
+
+class TooBig extends Error {}
+
+/**
+ * Read a raw body, refusing partway through rather than afterwards.
+ *
+ * Checking the length once it has all arrived is not a limit, it is a report:
+ * by then the bytes are already in memory, which is the thing the limit exists
+ * to prevent.
+ */
+async function readBinary(req, limit) {
+  const chunks = [];
+  let total = 0;
+  let over = false;
+
+  for await (const chunk of req) {
+    total += chunk.length;
+    if (total > limit) {
+      // Drain rather than destroy. Killing the socket here does protect the
+      // memory, and also throws away the connection the 413 was going to travel
+      // down — the client sees "fetch failed" and has no idea why. Dropping what
+      // we have keeps memory bounded while letting the upload finish talking, so
+      // the refusal actually arrives.
+      over = true;
+      chunks.length = 0;
+      continue;
+    }
+    chunks.push(chunk);
+  }
+
+  if (over) throw new TooBig();
+  return Buffer.concat(chunks);
 }
 
 function json(res, status, body) {

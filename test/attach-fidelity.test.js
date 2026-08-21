@@ -113,3 +113,78 @@ describe('an image survives being edited', () => {
     });
   });
 });
+
+/**
+ * End to end, with real bytes.
+ *
+ * Everything above proves the markdown survives. This proves the point of the
+ * exercise: that the picture actually appears. A rewrite that is perfectly
+ * lossless and produces a broken image icon has failed at the only thing the
+ * feature is for.
+ */
+const ONE_PIXEL = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64',
+);
+
+describe('an image actually renders', () => {
+  test('the src is rewritten and the bytes load', async () => {
+    const note = '# shot\n\n![a pixel](attachments/pixel.png)\n';
+    await withApp(
+      { 'shot.md': note, 'attachments/pixel.png': ONE_PIXEL },
+      async ({ page, read }) => {
+        await page.waitForTimeout(SETTLE);
+
+        const img = await page.evaluate(() => {
+          const el = document.querySelector('[data-editor] img');
+          return el && { src: el.getAttribute('src'), width: el.naturalWidth };
+        });
+
+        assert.ok(img, 'no image element was rendered at all');
+        assert.match(img.src, /^\/api\/file\?path=attachments%2Fpixel\.png$/);
+        // naturalWidth stays 0 on an image that failed to load, so this is the
+        // difference between "rewrote the src" and "the picture is there".
+        assert.equal(img.width, 1, 'the src was rewritten but the image did not load');
+
+        assert.equal(await read('shot.md'), note, 'rendering it rewrote the file');
+      },
+    );
+  });
+
+  test('a note in a subfolder resolves its image too', async () => {
+    const note = '# deep\n\n![a pixel](../attachments/pixel.png)\n';
+    await withApp(
+      { 'projects/deep.md': note, 'attachments/pixel.png': ONE_PIXEL },
+      async ({ page, read }) => {
+        await page.waitForTimeout(SETTLE);
+
+        const width = await page.evaluate(
+          () => document.querySelector('[data-editor] img')?.naturalWidth ?? 0,
+        );
+        assert.equal(width, 1, 'the ../ was not resolved against the note');
+        assert.equal(await read('projects/deep.md'), note);
+      },
+    );
+  });
+
+  test('typing beside an image leaves the link on disk unchanged', async () => {
+    const note = '# shot\n\n![a pixel](attachments/pixel.png)\n';
+    await withApp(
+      { 'shot.md': note, 'attachments/pixel.png': ONE_PIXEL },
+      async ({ page, read }) => {
+        await caretAfterHeading(page);
+        await page.keyboard.type(' edited');
+        await page.waitForTimeout(SETTLE);
+
+        const after = await read('shot.md');
+        assert.match(after, /# shot edited/);
+        assert.match(
+          after,
+          /!\[a pixel\]\(attachments\/pixel\.png\)/,
+          'the browser URL leaked onto disk',
+        );
+        assert.doesNotMatch(after, /api\/file/, 'saved a URL instead of a path');
+      },
+    );
+  });
+});

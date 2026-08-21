@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { sniffType, nameFor, findDuplicate } from './attachments.js';
 
 /**
  * A vault is a folder of files. That's the whole model.
@@ -13,6 +14,14 @@ const NOTE_EXTS = new Set(['.md', '.txt']);
 
 /** Deleted notes live here. Leading dot, so the walker never sees them. */
 const TRASH = '.trash';
+
+/**
+ * Images live here, and deliberately *not* behind a dot. The whole pitch is
+ * that your notes are files in a folder you can open; hiding the pictures from
+ * the person who took them would be the wrong kind of tidy. The walker ignores
+ * them anyway, because it only collects .md and .txt.
+ */
+const ATTACHMENTS = 'attachments';
 const MANIFEST = '.trash.json';
 
 export class Vault {
@@ -153,6 +162,55 @@ export class Vault {
     await moveFile(abs, dest);
     await this.#remember({ trashed, path: rel, deletedAt: now.getTime() });
     return { ok: true, path: rel, trashed };
+  }
+
+  /**
+   * Store an image and hand back where it landed.
+   *
+   * Deduplicating rather than overwriting: the filename ends in a hash of the
+   * content, so the same bytes always want the same name, and finding that name
+   * already taken means the work is done. Pasting one screenshot into six notes
+   * stores it once.
+   */
+  async attach(originalName, bytes) {
+    const buf = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes ?? []);
+    const type = sniffType(buf);
+    if (!type) return { ok: false, reason: 'unsupported' };
+
+    const dir = path.join(this.root, ATTACHMENTS);
+    await fs.mkdir(dir, { recursive: true });
+
+    const existing = await fs.readdir(dir).catch(() => []);
+    const already = findDuplicate(existing, buf);
+    if (already) return { ok: true, path: `${ATTACHMENTS}/${already}`, deduped: true };
+
+    const name = nameFor(originalName, buf);
+    const rel = `${ATTACHMENTS}/${name}`;
+    await fs.writeFile(await this.abs(rel), buf);
+    return { ok: true, path: rel, deduped: false, mime: type.mime };
+  }
+
+  /**
+   * Read a stored image back out.
+   *
+   * Deliberately narrow. This does not serve arbitrary vault files, and the
+   * gate is the bytes rather than the extension: an `.html` file sitting in
+   * someone's notes folder, served as text/html from the origin that holds
+   * every note they own, is stored cross-site scripting with extra steps. If it
+   * does not sniff as an image we did not put it there and will not hand it
+   * out.
+   */
+  async readImage(rel) {
+    const abs = await this.abs(rel);
+    let buf;
+    try {
+      buf = await fs.readFile(abs);
+    } catch {
+      return null;
+    }
+    const type = sniffType(buf);
+    if (!type) return null;
+    return { bytes: buf, mime: type.mime, path: rel };
   }
 
   /**
