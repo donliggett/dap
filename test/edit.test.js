@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { withApp } from './helpers.js';
+import { withApp, editorText, caretToEndOfFirstLine, waitForAttr } from './helpers.js';
 
 /**
  * These tests wait.
@@ -17,24 +17,22 @@ const SETTLE = 1200; // comfortably past the 500ms debounce and the round trip
 describe('typing', () => {
   test('a typed character is still there a second later', async () => {
     await withApp({ 'note.md': '# hello\n' }, async ({ page }) => {
-      const editor = page.locator('[data-editor]');
-      await editor.click();
-      await page.keyboard.press('End');
+      await caretToEndOfFirstLine(page);
       await page.keyboard.type('X');
 
       await page.waitForTimeout(SETTLE);
 
-      await assert.doesNotReject(
-        editor.filter({ hasText: 'X' }).waitFor({ timeout: 2000 }),
-        'the character vanished after the save cycle',
+      assert.match(
+        await editorText(page),
+        /X/,
+        'the character vanished from the editor after the save cycle',
       );
     });
   });
 
   test('what you typed reaches the file on disk', async () => {
     await withApp({ 'note.md': '# hello\n' }, async ({ page, read }) => {
-      await page.locator('[data-editor]').click();
-      await page.keyboard.press('End');
+      await caretToEndOfFirstLine(page);
       await page.keyboard.type(' world');
 
       await page.waitForTimeout(SETTLE);
@@ -48,8 +46,7 @@ describe('typing', () => {
     // Rebuilding the editor loses the selection, so text lands reversed or
     // scrambled. Typing several characters catches what typing one does not.
     await withApp({ 'note.md': 'abc\n' }, async ({ page, read }) => {
-      await page.locator('[data-editor]').click();
-      await page.keyboard.press('End');
+      await caretToEndOfFirstLine(page);
       for (const ch of 'defg') {
         await page.keyboard.type(ch);
         await page.waitForTimeout(180); // straddle the debounce deliberately
@@ -128,8 +125,7 @@ describe('saving', () => {
         await page.locator('.note-item', { hasText: 'two' }).click();
         await page.waitForTimeout(400);
 
-        await page.locator('[data-editor]').click();
-        await page.keyboard.press('End');
+        await caretToEndOfFirstLine(page);
         await page.keyboard.type(' edited');
         await page.waitForTimeout(SETTLE);
 
@@ -150,12 +146,11 @@ describe('the shell', () => {
 
   test('the panel opens and closes', async () => {
     await withApp({ 'a.md': 'a\n' }, async ({ page }) => {
-      const state = () => page.getAttribute('.shell', 'data-drawer');
-      assert.equal(await state(), 'closed');
+      await waitForAttr(page, '.shell', 'data-drawer', 'closed');
       await page.locator('[data-drawer-toggle]').click();
-      assert.equal(await state(), 'open');
+      await waitForAttr(page, '.shell', 'data-drawer', 'open');
       await page.keyboard.press('Escape');
-      assert.equal(await state(), 'closed');
+      await waitForAttr(page, '.shell', 'data-drawer', 'closed');
     });
   });
 

@@ -643,3 +643,31 @@ body {
 .shell[data-empty="true"] .source,
 .shell[data-empty="true"] .toolbar { display: none; }
 .empty[hidden] { display: none; }
+
+/* A command the current engine can't do. Visibly off rather than quietly inert. */
+.tool.is-unavailable { opacity: 0.32; cursor: not-allowed; }
+.tool.is-unavailable:hover { background: none; color: var(--ink-dim); }
+
+/* The fallback editor is a textarea, so it needs the note's typography without
+   any of a form control's chrome. */
+textarea.note-plain {
+  display: block;
+  width: 100%;
+  height: 100%;
+  resize: none;
+  border: 0;
+  outline: none;
+  background: none;
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 14px;
+  line-height: 1.7;
+  tab-size: 2;
+}
+textarea.note-plain::placeholder { color: var(--ink-faint); }
+
+/* The host is a bare container. All note typography lives on .note, which the
+   engine puts on whatever element it actually edits. */
+.editor-host { display: block; min-height: 100%; }
+.editor-host .ProseMirror { outline: none; }
+.editor-host .ProseMirror:focus { outline: none; }

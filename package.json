@@ -12,9 +12,20 @@
   },
   "scripts": {
     "start": "node bin/dap.js",
-    "test": "node --test test/*.test.js"
+    "test": "node --test --test-concurrency=1 test/*.test.js",
+    "bundle": "esbuild web/editor/rich.entry.js --bundle --format=esm --minify --target=es2022 --outfile=web/vendor/rich.js"
   },
   "devDependencies": {
-    "playwright": "^1.56.1"
+    "@tiptap/core": "^2",
+    "@tiptap/extension-link": "^2",
+    "@tiptap/extension-table": "^2",
+    "@tiptap/extension-table-cell": "^2",
+    "@tiptap/extension-table-header": "^2",
+    "@tiptap/extension-table-row": "^2",
+    "@tiptap/pm": "^2",
+    "@tiptap/starter-kit": "^2",
+    "esbuild": "^0.24",
+    "playwright": "^1.56.1",
+    "tiptap-markdown": "^0.8"
   }
 }

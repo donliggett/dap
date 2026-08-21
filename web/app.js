@@ -1,4 +1,5 @@
-import { createEditor } from './editor.js';
+import { createEditor } from './editor/index.js';
+import { splitFrontmatter, joinFrontmatter } from './frontmatter.js';
 
 const $ = (sel) => document.querySelector(sel);
 const shell = $('.shell');
@@ -11,7 +12,7 @@ const els = {
   saveDot: $('[data-save-dot]'),
   saveText: $('[data-save-text]'),
   words: $('[data-word-count]'),
-  editor: $('[data-editor]'),
+  editorHost: $('[data-editor-host]'),
   empty: $('[data-empty-state]'),
   emptyPath: $('[data-empty-path]'),
   source: $('[data-source]'),
@@ -22,9 +23,17 @@ const state = {
   path: null,
   baseHash: null,
   dirty: false,
+  // Carried verbatim from open to save. The editor never sees it.
+  front: '',
 };
 
-const editor = createEditor().mount(els.editor);
+const { engine, editor: engineImpl, reason } = await createEditor();
+const editor = engineImpl.mount(els.editorHost);
+document.body.dataset.engine = engine;
+if (reason) console.info(`dap: using the plain editor — ${reason}`);
+
+// Whichever engine mounted, its editable is the single [data-editor].
+els.editor = document.querySelector('[data-editor]');
 
 // ── api ────────────────────────────────────────────────────────────────
 const api = {
@@ -60,7 +69,7 @@ async function save() {
   idle = ceiling = null;
   if (!state.path || !state.dirty) return;
 
-  const content = editor.getMarkdown();
+  const content = joinFrontmatter(state.front, editor.getMarkdown());
   setSaveState('saving');
 
   const { status, body } = await api.write(state.path, content, state.baseHash);
@@ -116,7 +125,9 @@ async function open(path) {
   state.baseHash = note.hash;
   state.dirty = false;
 
-  editor.setMarkdown(note.content);
+  const { front, body } = splitFrontmatter(note.content);
+  state.front = front;
+  editor.setMarkdown(body);
   els.source.textContent = note.content;
   els.docName.textContent = note.path;
   els.statusPath.textContent = note.path;
@@ -143,27 +154,53 @@ const ago = (ms) => {
 // ── wiring ─────────────────────────────────────────────────────────────
 editor.onChange(() => {
   updateWords();
-  els.source.textContent = editor.getMarkdown();
+  els.source.textContent = joinFrontmatter(state.front, editor.getMarkdown());
+  refreshToolbar();
   scheduleSave();
 });
 
-// The toolbar advertises what the engine can actually do. With a plain-text
-// engine that is nothing, so every button dims — rather than pretending.
-for (const btn of document.querySelectorAll('.tool[data-cmd]')) {
+/**
+ * The toolbar reflects what the engine says it can do — nothing is hard-coded
+ * against a particular editor. A button whose command isn't in `capabilities`
+ * dims and says why, rather than sitting there looking functional.
+ */
+const toolButtons = [...document.querySelectorAll('.tool[data-cmd]')];
+const blockLabel = $('[data-block-label]');
+
+for (const btn of toolButtons) {
   const cmd = btn.dataset.cmd;
   const supported = editor.capabilities.includes(cmd);
   btn.disabled = !supported;
-  btn.style.opacity = supported ? '' : '0.35';
-  btn.title = supported ? '' : 'needs a rich-text engine';
-  if (supported) btn.addEventListener('click', () => { editor.run(cmd); editor.focus(); });
+  btn.classList.toggle('is-unavailable', !supported);
+  btn.title = supported ? '' : 'not available with the plain editor';
+  if (supported) {
+    btn.addEventListener('click', () => {
+      editor.run(cmd);
+      editor.focus();
+      refreshToolbar();
+    });
+  }
 }
+
+function refreshToolbar() {
+  for (const btn of toolButtons) {
+    if (btn.disabled) continue;
+    btn.setAttribute('aria-pressed', String(editor.isActive(btn.dataset.cmd)));
+  }
+  if (blockLabel && editor.blockLabel) blockLabel.textContent = editor.blockLabel();
+}
+
+editor.onSelection?.(refreshToolbar);
+refreshToolbar();
 
 const modeBtns = [...document.querySelectorAll('[data-mode-btn]')];
 for (const b of modeBtns) {
   b.addEventListener('click', () => {
     shell.dataset.mode = b.dataset.modeBtn;
     for (const o of modeBtns) o.setAttribute('aria-pressed', String(o === b));
-    if (b.dataset.modeBtn === 'source') els.source.textContent = editor.getMarkdown();
+    if (b.dataset.modeBtn === 'source') {
+      els.source.textContent = joinFrontmatter(state.front, editor.getMarkdown());
+    }
   });
 }
 
