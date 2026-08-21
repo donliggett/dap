@@ -912,3 +912,87 @@ textarea.note-plain::placeholder { color: var(--ink-faint); }
 }
 .undo-btn:hover { border-color: var(--accent-lit); }
 .undo-btn[hidden] { display: none; }
+
+/* ── the delete confirmation ────────────────────────────────────────────
+   Native <dialog>, styled to match. The one native modal that earns its
+   keep: it is genuinely modal, it traps focus, and Escape closes it without
+   a line of JavaScript. (The link button's prompt() does none of that and
+   is still on the list to replace.) */
+.confirm {
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  color: var(--ink);
+  padding: 0;
+  width: min(400px, calc(100vw - 32px));
+  box-shadow: var(--shadow);
+}
+.confirm::backdrop {
+  background: color-mix(in srgb, #000 46%, transparent);
+  backdrop-filter: blur(2px);
+}
+.confirm form { padding: 18px 18px 14px; }
+.confirm-title {
+  margin: 0 0 7px;
+  font-family: var(--ui);
+  font-size: 17px;
+  font-weight: 600;
+  font-stretch: 88%;
+  letter-spacing: -.01em;
+}
+.confirm-body {
+  margin: 0 0 16px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-dim);
+}
+.confirm-body code {
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--sunk);
+}
+/* The note's own name, so you can see you are about to delete the one you
+   meant. Deleting the wrong note is the failure this dialog exists for. */
+.confirm-name {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink);
+}
+.confirm-acts {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+}
+.confirm-acts .cf-btn { padding: 8px 15px; font-size: 13px; }
+.cf-btn.is-danger {
+  border-color: transparent;
+  background: var(--danger);
+  color: #fff;
+  font-weight: 600;
+}
+.cf-btn.is-danger:hover { filter: brightness(1.08); }
+.cf-btn:focus-visible {
+  outline: 2px solid var(--accent-lit);
+  outline-offset: 2px;
+}
+/* Coarse pointers get full-width targets, and nothing else changes.
+   An earlier version reversed the order here so that cancel sat under the
+   resting thumb. On screen that made delete the leading, filled, red button
+   in the position every other dialog uses for "yes, do it" -- safer to reach
+   for, and much easier to hit on purpose by mistake. Consistent order beats
+   clever placement: cancel first, delete last, on every pointer. */
+@media (pointer: coarse) {
+  .confirm-acts .cf-btn { flex: 1; padding: 12px 15px; }
+}
+
+/* 34px is a fine mouse target and a poor thumb one, and these two sit in the
+   same corner with one of them destructive. Apple asks for 44; the gap
+   between them matters as much as the size. */
+@media (pointer: coarse) {
+  .icon-btn { width: 44px; height: 44px; }
+  .icon-btn.is-delete { margin-right: 14px; }
+}

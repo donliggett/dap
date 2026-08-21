@@ -161,6 +161,26 @@
     <button class="theme-btn" type="button" data-theme-toggle aria-label="Toggle theme">◐</button>
   </footer>
 
+  <!-- A real <dialog>, so modality, focus trapping and Escape are the
+       browser's job rather than three bugs of mine. Cancel holds autofocus:
+       the whole point is that muscle memory must not be able to delete a
+       note, and Enter landing on the destructive button would hand it
+       straight back. -->
+  <dialog class="confirm" data-confirm-delete>
+    <form method="dialog">
+      <h2 class="confirm-title">delete this note?</h2>
+      <p class="confirm-body">
+        <span class="confirm-name" data-confirm-name></span>
+        moves to <code>.trash</code>, inside your notes folder. you can put it back
+        from there, or with undo.
+      </p>
+      <menu class="confirm-acts">
+        <button class="cf-btn" type="submit" value="cancel" autofocus data-confirm-cancel>cancel</button>
+        <button class="cf-btn is-danger" type="submit" value="delete" data-confirm-ok>delete</button>
+      </menu>
+    </form>
+  </dialog>
+
   <div class="search-overlay" data-search hidden>
     <div class="search-panel" role="dialog" aria-modal="true" aria-label="Search notes">
       <div class="search-head">

@@ -21,6 +21,14 @@ const exists = (root, rel) =>
 const listedNotes = (page) =>
   page.$$eval('.note-item .n-title', (els) => els.map((e) => e.textContent));
 
+/** Delete now asks first, so every path through it goes via the dialog. */
+async function deleteOpenNote(page) {
+  await page.click('[data-delete-btn]');
+  await page.waitForSelector('[data-confirm-delete][open]');
+  await page.click('[data-confirm-ok]');
+  await page.waitForTimeout(400);
+}
+
 describe('deleting the open note', () => {
   test('is not offered when there is nothing open', async () => {
     await withApp({}, async ({ page }) => {
@@ -32,8 +40,7 @@ describe('deleting the open note', () => {
     await withApp({ 'gone.md': '# gone\n', 'keep.md': '# keep\n' }, async ({ page, vault }) => {
       await openNote(page, 'gone');
 
-      await page.click('[data-delete-btn]');
-      await page.waitForTimeout(400);
+      await deleteOpenNote(page);
 
       assert.deepEqual(await listedNotes(page), ['keep']);
       assert.equal(await exists(vault, 'gone.md'), false);
@@ -43,8 +50,7 @@ describe('deleting the open note', () => {
   test('opens whatever is left, rather than sitting on a dead note', async () => {
     await withApp({ 'gone.md': '# gone\n', 'keep.md': '# keep\n' }, async ({ page }) => {
       await openNote(page, 'gone');
-      await page.click('[data-delete-btn]');
-      await page.waitForTimeout(500);
+      await deleteOpenNote(page);
 
       assert.match(await editorText(page), /keep/);
       assert.equal(await page.textContent('[data-status-path]'), 'keep.md');
@@ -53,7 +59,7 @@ describe('deleting the open note', () => {
 
   test('the last note leaves an empty state, not a broken one', async () => {
     await withApp({ 'only.md': '# only\n' }, async ({ page }) => {
-      await page.click('[data-delete-btn]');
+      await deleteOpenNote(page);
       await waitForAttr(page, '.shell', 'data-empty', 'true');
 
       assert.equal(await page.isVisible('[data-empty-state]'), true);
@@ -89,7 +95,7 @@ describe('deleting the open note', () => {
         if (r.method() === 'PUT') puts++;
       });
 
-      await page.click('[data-delete-btn]');
+      await deleteOpenNote(page);
       await page.waitForTimeout(SETTLE * 2);
 
       assert.equal(puts, 0, `a save outlived the delete (${puts} of them)`);
@@ -102,8 +108,7 @@ describe('undo', () => {
   test('is offered, and puts the note back where it was', async () => {
     await withApp({ 'gone.md': '# gone\n', 'keep.md': '# keep\n' }, async ({ page, vault }) => {
       await openNote(page, 'gone');
-      await page.click('[data-delete-btn]');
-      await page.waitForTimeout(400);
+      await deleteOpenNote(page);
 
       assert.equal(await page.isVisible('[data-undo]'), true);
       await page.click('[data-undo]');
@@ -117,8 +122,7 @@ describe('undo', () => {
 
   test('brings back exactly what was written, not an empty note', async () => {
     await withApp({ 'note.md': '# note\n\nsomething worth keeping\n' }, async ({ page, read }) => {
-      await page.click('[data-delete-btn]');
-      await page.waitForTimeout(400);
+      await deleteOpenNote(page);
       await page.click('[data-undo]');
       await page.waitForTimeout(500);
 
@@ -130,6 +134,105 @@ describe('undo', () => {
   test('is not offered before anything has been deleted', async () => {
     await withApp({ 'note.md': '# note\n' }, async ({ page }) => {
       assert.equal(await page.isVisible('[data-undo]'), false);
+    });
+  });
+});
+
+/**
+ * The dialog itself.
+ *
+ * Added after the fact, because I got this wrong. I shipped delete with no
+ * confirmation and an argument for why that was correct: the file only moves
+ * to `.trash/`, undo is right there, and a modal shown every time is a modal
+ * you learn to dismiss without reading. Don used it and said it was "way too
+ * easy and silent", which is the part the argument missed — recoverable and
+ * *reassuring* are different properties, and only one of them was delivered.
+ */
+describe('asking first', () => {
+  test('the delete button asks instead of deleting', async () => {
+    await withApp({ 'note.md': '# note\n' }, async ({ page, vault }) => {
+      await page.click('[data-delete-btn]');
+      await page.waitForSelector('[data-confirm-delete][open]');
+
+      assert.equal(await exists(vault, 'note.md'), true, 'deleted before anyone confirmed');
+    });
+  });
+
+  test('it names the note it is about to delete', async () => {
+    await withApp({ 'gone.md': '# gone\n', 'keep.md': '# keep\n' }, async ({ page }) => {
+      await openNote(page, 'gone');
+      await page.click('[data-delete-btn]');
+      await page.waitForSelector('[data-confirm-delete][open]');
+
+      // Deleting the wrong note is the failure the dialog exists to prevent,
+      // so showing *which* note is not decoration.
+      assert.equal(await page.textContent('[data-confirm-name]'), 'gone.md');
+    });
+  });
+
+  test('cancel leaves everything alone', async () => {
+    await withApp({ 'note.md': '# note\n' }, async ({ page, vault }) => {
+      await page.click('[data-delete-btn]');
+      await page.waitForSelector('[data-confirm-delete][open]');
+      await page.click('[data-confirm-cancel]');
+      await page.waitForTimeout(400);
+
+      assert.equal(await exists(vault, 'note.md'), true);
+      assert.equal(await page.isVisible('[data-undo]'), false, 'offered to undo a non-event');
+    });
+  });
+
+  test('escape cancels', async () => {
+    await withApp({ 'note.md': '# note\n' }, async ({ page, vault }) => {
+      await page.click('[data-delete-btn]');
+      await page.waitForSelector('[data-confirm-delete][open]');
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(400);
+
+      assert.equal(await exists(vault, 'note.md'), true);
+    });
+  });
+
+  /**
+   * The one that matters most. Muscle memory is delete-then-Enter, and if
+   * Enter lands on the destructive button the dialog has achieved nothing
+   * except an extra frame of animation.
+   */
+  test('a reflexive Enter cancels rather than deletes', async () => {
+    await withApp({ 'note.md': '# note\n' }, async ({ page, vault }) => {
+      await page.click('[data-delete-btn]');
+      await page.waitForSelector('[data-confirm-delete][open]');
+      await page.keyboard.press('Enter');
+      await page.waitForTimeout(400);
+
+      assert.equal(
+        await exists(vault, 'note.md'),
+        true,
+        'Enter went straight through the dialog to delete',
+      );
+    });
+  });
+
+  test('the dialog closes once the delete goes through', async () => {
+    await withApp({ 'note.md': '# note\n' }, async ({ page, vault }) => {
+      await deleteOpenNote(page);
+
+      assert.equal(await page.isVisible('[data-confirm-delete]'), false);
+      assert.equal(await exists(vault, 'note.md'), false);
+    });
+  });
+
+  test('asking twice and cancelling twice deletes nothing', async () => {
+    await withApp({ 'note.md': '# note\n' }, async ({ page, vault }) => {
+      for (let i = 0; i < 2; i++) {
+        await page.click('[data-delete-btn]');
+        await page.waitForSelector('[data-confirm-delete][open]');
+        await page.click('[data-confirm-cancel]');
+        await page.waitForTimeout(200);
+      }
+      // returnValue is sticky on <dialog>; a stale 'delete' left over from a
+      // previous round would make the *next* cancel delete the note.
+      assert.equal(await exists(vault, 'note.md'), true);
     });
   });
 });

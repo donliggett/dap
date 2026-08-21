@@ -21,6 +21,8 @@ const els = {
   conflictBar: $('[data-conflict-bar]'),
   deleteBtn: $('[data-delete-btn]'),
   undoBtn: $('[data-undo]'),
+  confirmDialog: $('[data-confirm-delete]'),
+  confirmName: $('[data-confirm-name]'),
   editorHost: $('[data-editor-host]'),
   empty: $('[data-empty-state]'),
   emptyPath: $('[data-empty-path]'),
@@ -195,13 +197,26 @@ function applyPath(path) {
 
 // ── delete ─────────────────────────────────────────────────────────────
 /**
- * Delete is a move to `.trash/`, so this is not the irreversible thing the
- * icon implies — which is exactly why there is no "are you sure". A modal that
- * appears every time trains you to dismiss it, and then it is not protecting
- * anything. An undo you can actually reach, plus the file still being on disk,
- * protects the case that matters: realising ten minutes later.
+ * Delete asks first.
+ *
+ * I argued against this: the file only moves to `.trash/`, an undo is offered,
+ * and a dialog you see every time is a dialog you learn to dismiss. All true,
+ * and all beside the point once it was actually used — a note vanishing from
+ * one tap, with the only acknowledgement being 11px of status bar, reads as
+ * having lost something whether or not it is recoverable. Confidence about the
+ * file surviving is not the same as confidence about what just happened.
+ *
+ * So: a real dialog, naming the note, with cancel holding focus. The undo and
+ * the trash folder both stay — this is a third net, not a replacement.
  */
 let undoTimer = null;
+
+function askDelete() {
+  if (!state.path || naming) return;
+  if (state.conflict) return nudgeConflict();
+  els.confirmName.textContent = state.path;
+  els.confirmDialog.showModal();
+}
 
 async function deleteCurrent() {
   if (!state.path || naming) return;
@@ -263,8 +278,21 @@ async function undoDelete() {
   await open(result.path);
 }
 
-els.deleteBtn.addEventListener('click', deleteCurrent);
+els.deleteBtn.addEventListener('click', askDelete);
 els.undoBtn.addEventListener('click', undoDelete);
+
+// Escape and the backdrop both close with an empty returnValue, so anything
+// other than the delete button walking away means "no".
+els.confirmDialog.addEventListener('close', () => {
+  if (els.confirmDialog.returnValue === 'delete') deleteCurrent();
+  els.confirmDialog.returnValue = '';
+});
+
+// Clicking the dimmed area outside the box is a cancel, the way every other
+// overlay in dap behaves. <dialog> reports those clicks as landing on itself.
+els.confirmDialog.addEventListener('click', (e) => {
+  if (e.target === els.confirmDialog) els.confirmDialog.close('cancel');
+});
 
 function setSaveState(kind) {
   const text = {
