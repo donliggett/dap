@@ -1,0 +1,645 @@
+/* ── tokens ───────────────────────────────────────────────────────────
+   Light is the bare :root. Dark is redefined twice — once for the
+   un-stamped system-dark viewer, once for the explicit toggle — so all
+   three theme states resolve. No colour is ever declared only inside a
+   media block. */
+:root {
+  --ground:   #FBFBFC;
+  --surface:  #FFFFFF;
+  --sunk:     #F3F4F7;
+  --line:     #E2E4EA;
+  --line-soft:#EDEEF2;
+  --ink:      #16181D;
+  --ink-dim:  #5C6472;
+  --ink-faint:#8A91A0;
+  --accent:   #B07C00;
+  --accent-lit: #F2C744;
+  --accent-ink: #16181D;
+  --wash:     rgb(242 199 68 / 28%);
+  --danger:   #B3261E;
+
+  --ui: "Archivo", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "Spline Sans Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --display: "Instrument Serif", Georgia, serif;
+
+  --r-sm: 5px;
+  --r-md: 9px;
+  --r-lg: 14px;
+
+  --pad: 16px;
+  --shadow: 0 1px 2px rgb(16 18 24 / 6%), 0 8px 24px -12px rgb(16 18 24 / 18%);
+}
+
+:root:not([data-theme="light"]) {
+  @media (prefers-color-scheme: dark) {
+    --ground:   #101216;
+    --surface:  #16191F;
+    --sunk:     #0C0E12;
+    --line:     #262A33;
+    --line-soft:#1E222A;
+    --ink:      #E6E9EF;
+    --ink-dim:  #99A1B0;
+    --ink-faint:#6B7383;
+    --accent:   #F2C744;
+    --accent-lit: #F2C744;
+    --accent-ink: #14161A;
+    --wash:     rgb(242 199 68 / 22%);
+    --danger:   #F2857A;
+    --shadow: 0 1px 2px rgb(0 0 0 / 40%), 0 10px 30px -14px rgb(0 0 0 / 70%);
+  }
+}
+
+:root[data-theme="dark"] {
+  --ground:   #101216;
+  --surface:  #16191F;
+  --sunk:     #0C0E12;
+  --line:     #262A33;
+  --line-soft:#1E222A;
+  --ink:      #E6E9EF;
+  --ink-dim:  #99A1B0;
+  --ink-faint:#6B7383;
+  --accent:   #F2C744;
+  --accent-lit: #F2C744;
+  --accent-ink: #14161A;
+  --wash:     rgb(242 199 68 / 22%);
+  --danger:   #F2857A;
+  --shadow: 0 1px 2px rgb(0 0 0 / 40%), 0 10px 30px -14px rgb(0 0 0 / 70%);
+}
+
+* { box-sizing: border-box; }
+
+html, body { height: 100%; margin: 0; }
+
+body {
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--ui);
+  font-variation-settings: "wdth" 100;
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  display: flex;
+  flex-direction: column;
+}
+
+::selection { background: var(--wash); color: var(--ink); }
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+
+/* ── the app shell ───────────────────────────────────────────────── */
+.shell {
+  container-type: inline-size;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  background: var(--ground);
+  overflow: hidden;
+}
+
+.topbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px;
+  height: 52px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.wordmark {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+  font-variation-settings: "wdth" 118, "wght" 600;
+  font-size: 19px;
+  letter-spacing: -0.035em;
+  color: var(--ink);
+  line-height: 1;
+}
+.wordmark .dot {
+  width: 7px; height: 7px;
+  border-radius: 2px;
+  background: var(--accent-lit);
+  transform: translateY(-1px);
+}
+
+.doc-name {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.topbar .spacer { flex: 1; }
+
+.icon-btn {
+  appearance: none;
+  display: inline-grid;
+  place-items: center;
+  width: 34px; height: 34px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--ink-dim);
+  cursor: pointer;
+}
+.icon-btn:hover { background: var(--sunk); color: var(--ink); }
+.icon-btn svg { width: 17px; height: 17px; }
+
+.menu-btn { display: inline-grid; }
+
+/* ── toolbar ─────────────────────────────────────────────────────── */
+.toolbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  overflow-x: auto;
+  scrollbar-width: none;
+  order: 0;
+}
+.toolbar::-webkit-scrollbar { display: none; }
+
+.tool {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--ink-dim);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex: none;
+}
+.tool:hover { background: var(--sunk); color: var(--ink); }
+.tool[aria-pressed="true"] {
+  background: var(--accent-lit);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+.tool svg { width: 16px; height: 16px; }
+.tool .caret { width: 10px; height: 10px; opacity: 0.55; }
+.tool .glyph {
+  font-variation-settings: "wdth" 112, "wght" 620;
+  font-size: 13px;
+  min-width: 15px;
+}
+.tool .glyph.i { font-style: italic; }
+.tool .glyph.s { text-decoration: line-through; }
+
+.tool-sep {
+  flex: none;
+  width: 1px;
+  height: 20px;
+  background: var(--line);
+  margin: 0 5px;
+}
+.toolbar .spacer { flex: 1; min-width: 8px; }
+
+.mode {
+  display: inline-flex;
+  flex: none;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+.mode button {
+  appearance: none;
+  border: 0;
+  background: none;
+  color: var(--ink-dim);
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 10px;
+  cursor: pointer;
+  font-family: var(--mono);
+}
+.mode button[aria-pressed="true"] {
+  background: var(--accent-lit);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+/* ── body: sidebar + page ────────────────────────────────────────── */
+.body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.body { position: relative; }
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  width: min(292px, 86%);
+  border-right: 1px solid var(--line);
+  background: var(--surface);
+  position: absolute;
+  inset: 0 auto 0 0;
+  z-index: 20;
+  transform: translateX(-100%);
+  transition: transform 190ms cubic-bezier(.22,.61,.36,1);
+  box-shadow: none;
+}
+.shell[data-drawer="open"] .sidebar {
+  transform: none;
+  box-shadow: var(--shadow);
+}
+
+.scrim {
+  position: absolute;
+  inset: 0;
+  background: rgb(0 0 0 / 38%);
+  z-index: 15;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 190ms ease;
+  border: 0;
+  padding: 0;
+}
+.shell[data-drawer="open"] .scrim { opacity: 1; pointer-events: auto; }
+
+/* Docked is kept only so the two can be compared side by side. */
+@container (min-width: 720px) {
+  .shell[data-nav="docked"] .sidebar {
+    position: static;
+    transform: none;
+    width: 236px;
+    box-shadow: none;
+  }
+  .shell[data-nav="docked"] .scrim { display: none; }
+  .shell[data-nav="docked"] .menu-btn { display: none; }
+  .shell[data-nav="docked"] .side-close { display: none; }
+}
+
+/* ── vertical nav ────────────────────────────────────────────────── */
+.nav {
+  flex: none;
+  padding: 10px 8px 12px;
+  display: grid;
+  gap: 1px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.nav-item {
+  appearance: none;
+  border: 0;
+  background: none;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  color: var(--ink-dim);
+  font: inherit;
+  font-size: 13.5px;
+  cursor: pointer;
+  text-align: left;
+}
+.nav-item:hover { background: var(--sunk); color: var(--ink); }
+.nav-item[aria-current="true"] { background: var(--sunk); color: var(--ink); font-weight: 600; }
+.nav-item[aria-current="true"] .nav-ico { color: var(--accent); }
+.nav-ico { flex: none; width: 17px; height: 17px; color: var(--ink-faint); }
+.nav-item .count {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+.nav-item kbd {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--ink-faint);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.side-close {
+  appearance: none;
+  display: inline-grid;
+  place-items: center;
+  width: 26px; height: 26px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--ink-faint);
+  cursor: pointer;
+}
+.side-close:hover { background: var(--sunk); color: var(--ink); }
+.side-close svg { width: 15px; height: 15px; }
+
+.side-head {
+  flex: none;
+  padding: 12px 12px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.side-title {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.note-list { overflow-y: auto; padding: 0 8px 14px; display: flex; flex-direction: column; gap: 1px; }
+
+.note-item {
+  appearance: none;
+  border: 0;
+  background: none;
+  text-align: left;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  display: grid;
+  gap: 2px;
+  color: var(--ink);
+}
+.note-item:hover { background: var(--sunk); }
+.note-item[aria-current="true"] { background: var(--sunk); }
+.note-item[aria-current="true"] .n-title { color: var(--accent); font-weight: 600; }
+.n-title { font-size: 13.5px; line-height: 1.3; }
+.n-meta {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.page {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  background: var(--ground);
+}
+
+/* ── the note itself ─────────────────────────────────────────────── */
+.note {
+  max-width: 66ch;
+  margin: 0 auto;
+  padding: 34px 22px 40vh;
+}
+@container (max-width: 719px) {
+  .note { padding: 22px 18px 30vh; }
+}
+
+.note h1 {
+  font-variation-settings: "wdth" 116, "wght" 640;
+  font-size: clamp(28px, 5.2cqw, 40px);
+  line-height: 1.08;
+  letter-spacing: -0.035em;
+  margin: 0 0 6px;
+  text-wrap: balance;
+}
+.note .subtitle {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-faint);
+  margin: 0 0 30px;
+}
+.note h2 {
+  font-variation-settings: "wdth" 108, "wght" 600;
+  font-size: 19px;
+  letter-spacing: -0.02em;
+  margin: 34px 0 10px;
+  text-wrap: balance;
+}
+.note p { margin: 0 0 15px; }
+.note strong { font-variation-settings: "wdth" 100, "wght" 650; }
+.note em { font-style: italic; }
+.note del { color: var(--ink-faint); }
+.note a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--accent-lit);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+.note ul, .note ol { margin: 0 0 15px; padding-left: 22px; display: grid; gap: 5px; }
+.note li::marker { color: var(--accent); }
+
+.note blockquote {
+  margin: 0 0 15px;
+  padding: 2px 0 2px 16px;
+  border-left: 2px solid var(--accent-lit);
+  color: var(--ink-dim);
+}
+
+.note code {
+  font-family: var(--mono);
+  font-size: 0.86em;
+  background: var(--sunk);
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  padding: 0.08em 0.34em;
+}
+.note pre {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  background: var(--sunk);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 13px 15px;
+  overflow-x: auto;
+  margin: 0 0 15px;
+  line-height: 1.6;
+}
+.note pre code { background: none; border: 0; padding: 0; font-size: inherit; }
+
+.table-wrap { overflow-x: auto; margin: 0 0 15px; }
+.note table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+.note th, .note td {
+  border: 1px solid var(--line);
+  padding: 7px 11px;
+  text-align: left;
+}
+.note th {
+  background: var(--sunk);
+  font-variation-settings: "wdth" 104, "wght" 600;
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--ink-dim);
+}
+.note td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+.task { list-style: none; padding-left: 0; }
+.task li { display: flex; gap: 9px; align-items: flex-start; }
+.box {
+  flex: none;
+  width: 15px; height: 15px;
+  border: 1.5px solid var(--line);
+  border-radius: 4px;
+  margin-top: 4px;
+  display: grid;
+  place-items: center;
+}
+.box.on { background: var(--accent-lit); border-color: var(--accent-lit); }
+.box svg { width: 10px; height: 10px; color: var(--accent-ink); }
+.task li.done span:last-child { color: var(--ink-faint); text-decoration: line-through; }
+
+/* source view */
+.source {
+  display: none;
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.75;
+  white-space: pre-wrap;
+  max-width: 78ch;
+  margin: 0 auto;
+  padding: 30px 22px 40vh;
+  color: var(--ink-dim);
+}
+.source .tok { color: var(--accent); }
+.shell[data-mode="source"] .note { display: none; }
+.shell[data-mode="source"] .source { display: block; }
+.shell[data-mode="source"] .fmt { opacity: 0.35; pointer-events: none; }
+
+
+/* ── status bar ──────────────────────────────────────────────────── */
+.status {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px;
+  height: 32px;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+.status .spacer { flex: 1; }
+.saved { display: inline-flex; align-items: center; gap: 6px; }
+.saved .dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent-lit);
+}
+.status .hide-narrow { display: none; }
+@container (min-width: 720px) {
+  .status .hide-narrow { display: inline; }
+}
+
+/* narrow: toolbar docks to the bottom, where the keyboard would push it */
+@container (max-width: 719px) {
+  .shell { flex-direction: column; }
+  .toolbar {
+    order: 3;
+    border-bottom: 0;
+    border-top: 1px solid var(--line);
+    padding-bottom: max(7px, env(safe-area-inset-bottom));
+  }
+  .status { order: 4; }
+  .body { order: 2; }
+  .topbar { order: 1; }
+}
+
+/* ── headings ────────────────────────────────────────────────────────
+   Archivo's width axis carries the display voice; body stays at 100. */
+.note h1 {
+  font-variation-settings: "wdth" 116, "wght" 640;
+  font-size: clamp(28px, 5.2cqw, 40px);
+  letter-spacing: -0.035em;
+  line-height: 1.08;
+}
+.note h2 {
+  font-variation-settings: "wdth" 108, "wght" 600;
+  font-size: 19px;
+  letter-spacing: -0.02em;
+}
+.note h3 {
+  font-variation-settings: "wdth" 104, "wght" 600;
+  font-size: 16px;
+  letter-spacing: -0.01em;
+  margin: 26px 0 8px;
+}
+
+/* ── editor surface ──────────────────────────────────────────────────
+   Tiptap renders into .note, so the note styles above are the editor
+   styles. One set of rules for reading and writing — they cannot drift. */
+.note:focus { outline: none; }
+.note p.is-empty:first-child::before {
+  content: "start writing…";
+  color: var(--ink-faint);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+/* ── empty state ─────────────────────────────────────────────────────
+   A fresh folder is the first thing a new user sees. A blank screen reads
+   as broken; this reads as ready. */
+.empty {
+  height: 100%;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 6px;
+  padding: 40px 24px;
+  text-align: center;
+}
+.empty-title {
+  margin: 0;
+  font-variation-settings: "wdth" 112, "wght" 600;
+  font-size: 21px;
+  letter-spacing: -0.02em;
+}
+.empty-sub {
+  margin: 0 0 14px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-faint);
+  overflow-wrap: anywhere;
+}
+.empty-btn {
+  appearance: none;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--accent-lit);
+  color: var(--accent-ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 15px;
+  cursor: pointer;
+}
+.empty-btn:hover { filter: brightness(1.06); }
+
+/* The shell carries data-empty as STATE; the panel is [data-empty-state].
+   They were both `data-empty` at first, so querySelector matched the shell
+   and the panel was never found. Different names, deliberately. */
+.shell[data-empty="true"] .note,
+.shell[data-empty="true"] .source,
+.shell[data-empty="true"] .toolbar { display: none; }
+.empty[hidden] { display: none; }

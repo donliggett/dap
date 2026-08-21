@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- viewport-fit=cover is what makes env(safe-area-inset-*) non-zero on
+     notched phones; without it the safe-area padding silently does nothing. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<meta name="mobile-web-app-capable" content="yes">
+<title>dap</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,300..700&family=Spline+Sans+Mono:wght@300..600&display=swap">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<div class="shell" data-mode="rich" data-drawer="closed">
+
+  <header class="topbar">
+    <button class="icon-btn menu-btn" type="button" aria-label="Notes" data-drawer-toggle>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+        <path d="M4 7h16M4 12h16M4 17h16"/>
+      </svg>
+    </button>
+    <span class="wordmark"><span class="dot"></span>dap</span>
+    <span class="doc-name" data-doc-name></span>
+    <span class="spacer"></span>
+    <button class="icon-btn" type="button" aria-label="New note" data-new>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+        <path d="M12 5v14M5 12h14"/>
+      </svg>
+    </button>
+  </header>
+
+  <div class="toolbar" role="toolbar" aria-label="Formatting">
+    <button class="tool fmt" type="button" aria-label="Block style" data-cmd="heading">
+      <span class="glyph" data-block-label>P</span>
+      <svg class="caret" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="m3 4.5 3 3 3-3"/></svg>
+    </button>
+    <button class="tool fmt" type="button" aria-label="Bulleted list" data-cmd="bulletList">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+        <path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1.3" fill="currentColor" stroke="none"/><circle cx="4.5" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="4.5" cy="18" r="1.3" fill="currentColor" stroke="none"/>
+      </svg>
+    </button>
+
+    <span class="tool-sep"></span>
+
+    <button class="tool fmt" type="button" aria-label="Bold" data-cmd="bold"><span class="glyph">B</span></button>
+    <button class="tool fmt" type="button" aria-label="Italic" data-cmd="italic"><span class="glyph i">I</span></button>
+    <button class="tool fmt" type="button" aria-label="Strikethrough" data-cmd="strike"><span class="glyph s">S</span></button>
+    <button class="tool fmt" type="button" aria-label="Link" data-cmd="link">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+        <path d="M10 13.5a4 4 0 0 0 5.7 0l2.8-2.8a4 4 0 0 0-5.7-5.7l-1.3 1.3"/>
+        <path d="M14 10.5a4 4 0 0 0-5.7 0l-2.8 2.8a4 4 0 0 0 5.7 5.7l1.3-1.3"/>
+      </svg>
+    </button>
+
+    <span class="tool-sep"></span>
+
+    <button class="tool fmt" type="button" aria-label="Table" data-cmd="table">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+        <rect x="4" y="5" width="16" height="14" rx="2"/><path d="M4 10h16M10 10v9"/>
+      </svg>
+    </button>
+    <button class="tool fmt" type="button" aria-label="Clear formatting" data-cmd="clear">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+        <path d="M7 6h11M12.5 6 9 18"/><path d="m15 14 5 5m0-5-5 5"/>
+      </svg>
+    </button>
+
+    <span class="spacer"></span>
+
+    <div class="mode" role="group" aria-label="View">
+      <button type="button" data-mode-btn="rich" aria-pressed="true">rich</button>
+      <button type="button" data-mode-btn="source" aria-pressed="false">source</button>
+    </div>
+  </div>
+
+  <div class="body">
+    <button class="scrim" type="button" tabindex="-1" aria-hidden="true" data-drawer-close></button>
+
+    <aside class="sidebar">
+      <nav class="nav" aria-label="Sections">
+        <button class="nav-item" type="button" aria-current="true">
+          <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5h8.5L19 8v12.5H6z"/><path d="M14 3.5V8h5"/></svg>
+          <span>notes</span><span class="count" data-note-count>0</span>
+        </button>
+        <button class="nav-item" type="button">
+          <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
+          <span>search</span><kbd>⌘K</kbd>
+        </button>
+        <button class="nav-item" type="button">
+          <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 8h16M4 14h16M9 4l-1.5 16M16.5 4L15 20"/></svg>
+          <span>tags</span><span class="count">0</span>
+        </button>
+        <button class="nav-item" type="button">
+          <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 4v2M12 18v2M4 12h2M18 12h2M6.3 6.3l1.4 1.4M16.3 16.3l1.4 1.4M17.7 6.3l-1.4 1.4M7.7 16.3l-1.4 1.4"/></svg>
+          <span>settings</span>
+        </button>
+      </nav>
+
+      <div class="side-head">
+        <span class="side-title">recent</span>
+        <button class="side-close" type="button" aria-label="Close panel" data-drawer-close>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M15 6l-6 6 6 6"/></svg>
+        </button>
+      </div>
+
+      <div class="note-list" data-note-list></div>
+    </aside>
+
+    <main class="page">
+      <article class="note" data-editor></article>
+      <div class="source" data-source></div>
+
+      <div class="empty" data-empty-state hidden>
+        <p class="empty-title">nothing here yet</p>
+        <p class="empty-sub" data-empty-path></p>
+        <button class="empty-btn" type="button" data-new>make the first note</button>
+      </div>
+    </main>
+  </div>
+
+  <footer class="status">
+    <span class="saved"><span class="dot" data-save-dot></span><span data-save-text>ready</span></span>
+    <span class="hide-narrow" data-status-path></span>
+    <span class="spacer"></span>
+    <span class="hide-narrow" data-word-count></span>
+    <button class="theme-btn" type="button" data-theme-toggle aria-label="Toggle theme">◐</button>
+  </footer>
+
+</div>
+
+<script type="module" src="/app.js"></script>
+</body>
+</html>
