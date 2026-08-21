@@ -918,7 +918,8 @@ textarea.note-plain::placeholder { color: var(--ink-faint); }
    keep: it is genuinely modal, it traps focus, and Escape closes it without
    a line of JavaScript. (The link button's prompt() does none of that and
    is still on the list to replace.) */
-.confirm {
+.confirm,
+.linkdlg {
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
   background: var(--surface);
@@ -927,11 +928,13 @@ textarea.note-plain::placeholder { color: var(--ink-faint); }
   width: min(400px, calc(100vw - 32px));
   box-shadow: var(--shadow);
 }
-.confirm::backdrop {
+.confirm::backdrop,
+.linkdlg::backdrop {
   background: color-mix(in srgb, #000 46%, transparent);
   backdrop-filter: blur(2px);
 }
-.confirm form { padding: 18px 18px 14px; }
+.confirm form,
+.linkdlg form { padding: 18px 18px 14px; }
 .confirm-title {
   margin: 0 0 7px;
   font-family: var(--ui);
@@ -1207,3 +1210,40 @@ textarea.note-plain::placeholder { color: var(--ink-faint); }
   white-space: nowrap;
 }
 .notice[hidden] { display: none; }
+
+/* ── the link dialog ────────────────────────────────────────────────────
+   Shares the confirmation's box; the contents are a field rather than a
+   question, so the input holds focus instead of the safe button. Nothing
+   here is destructive by default. */
+.link-field { display: block; margin: 0 0 12px; }
+.link-field span {
+  display: block;
+  margin-bottom: 5px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+.link-field input {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: var(--mono);
+  font-size: 13px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--ground);
+  color: var(--ink);
+  outline: none;
+}
+.link-field input:focus { border-color: var(--accent-lit); }
+.link-error {
+  margin: -6px 0 12px;
+  font-size: 12px;
+  color: var(--danger);
+}
+.link-error[hidden] { display: none; }
+
+/* Removing a link is not destroying anything — the words stay. It reads as a
+   third option rather than a warning. */
+.cf-btn.is-quiet { margin-right: auto; color: var(--ink-dim); }
+.cf-btn.is-quiet[hidden] { display: none; }

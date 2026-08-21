@@ -6,6 +6,7 @@ import { trackKeyboard } from './keyboard.js';
 import { toBrowser, toDisk } from './attach-rewrite.js';
 import { uploadImage, imagesFrom, altFor } from './attach-client.js';
 import { hrefFor } from './attach-path.js';
+import { normalizeUrl, displayUrl } from './links.js';
 
 const $ = (sel) => document.querySelector(sel);
 const shell = $('.shell');
@@ -34,6 +35,11 @@ const els = {
   trashRestore: $('[data-trash-restore]'),
   imageInput: $('[data-image-input]'),
   notice: $('[data-notice]'),
+  linkDialog: $('[data-link-dialog]'),
+  linkInput: $('[data-link-input]'),
+  linkTitle: $('[data-link-title]'),
+  linkError: $('[data-link-error]'),
+  linkRemove: $('[data-link-remove]'),
   editorHost: $('[data-editor-host]'),
   empty: $('[data-empty-state]'),
   emptyPath: $('[data-empty-path]'),
@@ -421,6 +427,16 @@ const blockLabel = $('[data-block-label]');
 
 for (const btn of toolButtons) {
   const cmd = btn.dataset.cmd;
+  if (cmd === 'link') {
+    // Not a toggle either: it opens a dialog, and the engine is only involved
+    // once there is a URL to apply.
+    const canLink = editor.capabilities.includes('link');
+    btn.disabled = !canLink;
+    btn.classList.toggle('is-unavailable', !canLink);
+    if (canLink) btn.addEventListener('click', openLinkDialog);
+    continue;
+  }
+
   if (cmd === 'image') {
     // Not an editor command: it opens a file picker, and the engine only gets
     // involved once there are bytes to insert. Still gated on the capability,
@@ -549,6 +565,79 @@ els.nameInput.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); endNaming(false); }
 });
 els.nameInput.addEventListener('blur', () => endNaming(true));
+
+// ── links ──────────────────────────────────────────────────────────────
+/**
+ * Replaces a `prompt()`.
+ *
+ * The old one could only add or remove: with the cursor inside an existing
+ * link it unlinked, so fixing a typo in a URL meant destroying the link and
+ * making it again. This prefills what is already there, which is most of the
+ * point — the dialog is the smaller half of the change.
+ */
+function openLinkDialog() {
+  const state = editor.linkState?.() ?? { active: false, href: '', selected: false };
+
+  els.linkTitle.textContent = state.active ? 'edit this link' : 'add a link';
+  els.linkInput.value = displayUrl(state.href);
+  els.linkRemove.hidden = !state.active;
+  els.linkError.hidden = true;
+
+  els.linkDialog.showModal();
+  // The field, not a button: nothing here is destructive, so the thing you
+  // came to type in is the thing that should be ready.
+  els.linkInput.select();
+}
+
+/**
+ * Validation happens on submit, not after closing.
+ *
+ * The first version let the dialog close, checked the URL, and reopened it on
+ * a bad one — which flickers, and throws away the caret position in the field
+ * you were about to fix. Refusing the submit keeps the dialog exactly where it
+ * was, with the cursor still in the text.
+ */
+let pendingHref = null;
+
+els.linkDialog.querySelector('form').addEventListener('submit', (e) => {
+  if (e.submitter?.value !== 'apply') return;
+
+  const result = normalizeUrl(els.linkInput.value);
+  if (!result.ok) {
+    e.preventDefault();
+    els.linkError.textContent = result.error;
+    els.linkError.hidden = false;
+    els.linkInput.focus();
+    return;
+  }
+  pendingHref = result.href;
+});
+
+els.linkDialog.addEventListener('close', () => {
+  const choice = els.linkDialog.returnValue;
+  const href = pendingHref;
+  els.linkDialog.returnValue = '';
+  pendingHref = null;
+
+  if (choice === 'apply' && href) {
+    editor.applyLink(href);
+    refreshToolbar();
+    scheduleSave();
+  }
+  if (choice === 'remove') {
+    editor.removeLink();
+    refreshToolbar();
+    scheduleSave();
+  }
+});
+
+els.linkDialog.addEventListener('click', (e) => {
+  if (e.target !== els.linkDialog) return;
+  const r = els.linkDialog.getBoundingClientRect();
+  const outside =
+    e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+  if (outside) els.linkDialog.close('cancel');
+});
 
 // ── attaching images ───────────────────────────────────────────────────
 /**

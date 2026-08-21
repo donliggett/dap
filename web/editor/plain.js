@@ -16,6 +16,8 @@
  * and never reaches inside.
  */
 
+import { isSafeHref } from '../links.js';
+
 export function createPlainEditor() {
   let el = null;
   let listeners = [];
@@ -28,7 +30,7 @@ export function createPlainEditor() {
 
   return {
     /** Commands this engine supports. The toolbar dims anything absent. */
-    capabilities: ['image'],
+    capabilities: ['image', 'link'],
 
     /** A textarea shows the markdown; it never draws the picture. */
     rendersImages: false,
@@ -78,6 +80,33 @@ export function createPlainEditor() {
       emit();
       return true;
     },
+
+    /**
+     * The plain engine has no marks, only text, so a link is the markdown for
+     * one. It can never report an existing link: finding the `[text](href)` the
+     * cursor happens to be inside would mean parsing markdown in a textarea,
+     * and the person can already see and edit it directly, which is the whole
+     * point of this engine.
+     */
+    linkState() {
+      if (!el) return { active: false, href: '', selected: false };
+      return { active: false, href: '', selected: el.selectionStart !== el.selectionEnd };
+    },
+
+    applyLink(href, { text = '' } = {}) {
+      if (!el || !isSafeHref(href)) return false;
+      const { selectionStart: from, selectionEnd: to, value } = el;
+      const label = value.slice(from, to) || text || href;
+      const snippet = `[${label}](${href})`;
+
+      el.value = value.slice(0, from) + snippet + value.slice(to);
+      el.selectionStart = el.selectionEnd = from + snippet.length;
+      emit();
+      return true;
+    },
+
+    /** Nothing to remove: there is no mark, only the text you can see. */
+    removeLink() { return false; },
 
     onChange(fn) {
       listeners.push(fn);

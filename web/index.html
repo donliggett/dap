@@ -214,6 +214,30 @@
     </div>
   </dialog>
 
+  <!-- Replaces a prompt(). Same <dialog> pattern as the delete confirmation:
+       modality, focus trapping and Escape for free, and stylable, which
+       prompt() is not. -->
+  <dialog class="linkdlg" data-link-dialog aria-label="Link">
+    <form method="dialog">
+      <h2 class="confirm-title" data-link-title>add a link</h2>
+      <label class="link-field">
+        <span>address</span>
+        <!-- type="text", not type="url". The browser's own validation refuses
+             a bare `example.com` and blocks submit before any of our code runs,
+             which silently kills the one convenience this field exists for.
+             inputmode still gives phones the url keyboard. -->
+        <input type="text" data-link-input inputmode="url" autocomplete="off"
+               autocapitalize="off" spellcheck="false" placeholder="example.com">
+      </label>
+      <p class="link-error" data-link-error hidden></p>
+      <menu class="confirm-acts">
+        <button class="cf-btn" type="submit" value="cancel" data-link-cancel>cancel</button>
+        <button class="cf-btn is-quiet" type="submit" value="remove" data-link-remove hidden>remove link</button>
+        <button class="cf-btn cf-safe" type="submit" value="apply" data-link-apply>apply</button>
+      </menu>
+    </form>
+  </dialog>
+
   <!-- A real <dialog>, so modality, focus trapping and Escape are the
        browser's job rather than three bugs of mine. Cancel holds autofocus:
        the whole point is that muscle memory must not be able to delete a

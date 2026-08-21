@@ -21,6 +21,7 @@ import TableRow from '@tiptap/extension-table-row';
 import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
 import { Markdown } from 'tiptap-markdown';
+import { isSafeHref } from '../links.js';
 
 export function createRichEditor() {
   let editor = null;
@@ -44,7 +45,18 @@ export function createRichEditor() {
         element: node,
         extensions: [
           StarterKit.configure({ heading: { levels: [1, 2, 3] } }),
-          Link.configure({ openOnClick: false }),
+          // Narrowing, not a fix — worth being precise about. Tiptap already
+          // refuses `javascript:` on its own; verified by testing a note
+          // containing one against a bundle built without this config, with a
+          // safe link beside it as a control so the test could actually fail.
+          // What this adds is the narrower set: Tiptap's default also permits
+          // ftp and friends, and dap has no reason to. openOnClick keeps a
+          // stray click from navigating.
+          Link.configure({
+            openOnClick: false,
+            protocols: ['http', 'https', 'mailto'],
+            validate: (href) => isSafeHref(href),
+          }),
           // allowBase64 is off deliberately. An inlined data: URL would put
           // megabytes of base64 into a note that is supposed to stay readable
           // in any editor, and would defeat the point of attachments living in
@@ -127,6 +139,48 @@ export function createRichEditor() {
       return true;
     },
 
+    /**
+     * What the link button needs to know before it opens.
+     *
+     * `href` is what to prefill. Without it, editing an existing link is
+     * impossible — the old prompt() could only ever add or remove one, so
+     * fixing a typo in a URL meant unlinking and starting again.
+     */
+    linkState() {
+      if (!editor) return { active: false, href: '', selected: false };
+      return {
+        active: editor.isActive('link'),
+        href: editor.getAttributes('link').href ?? '',
+        selected: !editor.state.selection.empty,
+      };
+    },
+
+    /**
+     * `extendMarkRange` is what makes editing work: with the cursor sitting
+     * inside a link and nothing selected, it grows the selection to the whole
+     * link, so the change lands on all of it rather than splitting it in two.
+     */
+    applyLink(href, { text = '' } = {}) {
+      if (!editor || !isSafeHref(href)) return false;
+
+      // Nothing selected and no link here: there is no text to attach the link
+      // to, so write some. Doing nothing at all is how the old one felt broken.
+      if (editor.state.selection.empty && !editor.isActive('link')) {
+        return editor
+          .chain()
+          .focus()
+          .insertContent({ type: 'text', text: text || href, marks: [{ type: 'link', attrs: { href } }] })
+          .run();
+      }
+
+      return editor.chain().focus().extendMarkRange('link').setLink({ href }).run();
+    },
+
+    removeLink() {
+      if (!editor) return false;
+      return editor.chain().focus().extendMarkRange('link').unsetLink().run();
+    },
+
     onChange(fn) {
       listeners.push(fn);
       return () => { listeners = listeners.filter((f) => f !== fn); };
@@ -170,12 +224,6 @@ export function createRichEditor() {
           if (!level) return chain.toggleHeading({ level: 1 }).run();
           if (level < 3) return chain.toggleHeading({ level: level + 1 }).run();
           return chain.setParagraph().run();
-        }
-        case 'link': {
-          if (editor.isActive('link')) return chain.unsetLink().run();
-          const url = globalThis.prompt?.('link to');
-          if (!url) return false;
-          return chain.setLink({ href: url }).run();
         }
         case 'table':
           return chain.insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
