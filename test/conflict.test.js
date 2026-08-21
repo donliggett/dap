@@ -2,7 +2,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { withApp, editorText, caretToEndOfFirstLine, waitForAttr } from './helpers.js';
+import { withApp, editorText, caretToEndOfFirstLine, waitForAttr, openNote } from './helpers.js';
 
 /**
  * What happens when the file moves under you.
@@ -23,18 +23,6 @@ const CONFLICT_BAR = '[data-conflict-bar]';
 
 /** Change the file behind the app's back, the way another program would. */
 const changeOnDisk = (vault, rel, text) => fs.writeFile(path.join(vault, rel), text);
-
-/**
- * Open a note by its visible title rather than trusting boot order — two
- * fixtures written in the same millisecond have already produced one flaky
- * test here. The list lives in the drawer, which is closed at this width.
- */
-async function openNote(page, title) {
-  const drawer = await page.getAttribute('.shell', 'data-drawer');
-  if (drawer !== 'open') await page.click('[data-drawer-toggle]');
-  await page.locator('.note-item', { hasText: title }).first().click();
-  await page.waitForTimeout(150);
-}
 
 /** Type into the open note and let the save attempt complete. */
 async function typeAndSettle(page, text) {

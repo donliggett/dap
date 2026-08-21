@@ -86,6 +86,23 @@ export async function serve({ vault: vaultPath, port = 4747, host = '127.0.0.1',
         return json(res, result.conflict ? 409 : 200, result);
       }
 
+      // Delete is a move, not an unlink — see vault.trash. The response carries
+      // where it went, which is the whole of what an undo needs.
+      if (route === 'DELETE /api/note') {
+        const rel = url.searchParams.get('path');
+        const result = await vault.trash(rel);
+        return json(res, result.missing ? 404 : 200, result);
+      }
+
+      if (route === 'POST /api/restore') {
+        const body = await readJson(req);
+        if (typeof body?.trashed !== 'string' || typeof body?.path !== 'string') {
+          return json(res, 400, { error: 'trashed and path required' });
+        }
+        const result = await vault.restore(body.trashed, body.path);
+        return json(res, result.missing ? 404 : 200, result);
+      }
+
       if (route === 'GET /api/search') {
         const q = url.searchParams.get('q') ?? '';
         const terms = q.toLowerCase().split(/\s+/).filter(Boolean);

@@ -29,6 +29,14 @@
            placeholder="name this note" aria-label="Note name"
            autocomplete="off" autocapitalize="off" spellcheck="false">
     <span class="spacer"></span>
+    <!-- Set apart from + on purpose: the two live in the same corner and one of
+         them is destructive. The gap is the only thing between a thumb and the
+         wrong button. -->
+    <button class="icon-btn is-delete" type="button" aria-label="Delete note" data-delete-btn disabled>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M5 7h14M10 7V5.5h4V7M8 7l.8 12h6.4L16 7"/>
+      </svg>
+    </button>
     <button class="icon-btn" type="button" aria-label="New note" data-new data-new-btn>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
         <path d="M12 5v14M5 12h14"/>
@@ -146,6 +154,7 @@
 
   <footer class="status">
     <span class="saved"><span class="dot" data-save-dot></span><span data-save-text>ready</span></span>
+    <button class="undo-btn" type="button" data-undo hidden>undo</button>
     <span class="hide-narrow" data-status-path></span>
     <span class="spacer"></span>
     <span class="hide-narrow" data-word-count></span>

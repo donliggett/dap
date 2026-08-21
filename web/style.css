@@ -888,3 +888,27 @@ textarea.note-plain::placeholder { color: var(--ink-faint); }
 @media (prefers-reduced-motion: reduce) {
   .conflict.is-urgent { animation: none; outline: 2px solid var(--danger); }
 }
+
+/* ── delete ─────────────────────────────────────────────────────────────
+   The only destructive control in the app, so it is the only one that gets
+   a gap of its own and refuses to look inviting until there is something to
+   act on. It stays quiet — deleting is not a thing to encourage, and the
+   file goes to .trash anyway. */
+.icon-btn.is-delete { margin-right: 10px; }
+.icon-btn.is-delete:hover:not(:disabled) { color: var(--danger); }
+.icon-btn.is-delete:disabled { opacity: .3; cursor: default; }
+
+/* Undo sits in the status bar rather than floating over the text: it is a
+   footnote to something that already happened, not a question. */
+.undo-btn {
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+.undo-btn:hover { border-color: var(--accent-lit); }
+.undo-btn[hidden] { display: none; }

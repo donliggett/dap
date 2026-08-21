@@ -115,6 +115,97 @@ export class Vault {
     await fs.writeFile(abs, buf);
     return { ok: true, path: rel, hash: hash(buf) };
   }
+
+  /**
+   * Delete by moving to `.trash/`, never by unlinking.
+   *
+   * The walker already skips anything starting with a dot, so a trashed note
+   * leaves the list and the search index the moment it moves, with no special
+   * casing anywhere — and it is still sitting in the folder afterwards, openable
+   * by any file manager, for someone who deleted the wrong thing an hour ago.
+   *
+   * A notes app that can silently destroy a year of writing on one mistaken tap
+   * has to earn that power. This one does not need it.
+   */
+  async trash(rel, { now = new Date() } = {}) {
+    const abs = await this.abs(rel);
+    const st = await fs.stat(abs).catch(() => null);
+    if (!st || !st.isFile()) return { ok: false, missing: true, path: rel };
+
+    const stem = rel.slice(rel.lastIndexOf('/') + 1).replace(/\.(md|txt)$/i, '');
+    const ext = path.extname(rel) || '.md';
+    // Flattened, and stamped rather than numbered: deleting the same filename
+    // from two folders on two different days should read as two different
+    // events, not as `note.md` and `note 2.md`.
+    const when = stampFor(now);
+
+    let trashed = `.trash/${stem} ${when}${ext}`;
+    for (let n = 2; await exists(await this.abs(trashed)); n++) {
+      trashed = `.trash/${stem} ${when} (${n})${ext}`;
+    }
+
+    const dest = await this.abs(trashed);
+    await fs.mkdir(path.dirname(dest), { recursive: true });
+    await moveFile(abs, dest);
+    return { ok: true, path: rel, trashed };
+  }
+
+  /**
+   * Put a trashed note back. Refuses to leave `.trash/`, and refuses to land
+   * on top of whatever now lives at the original path — undo should never be
+   * the thing that destroys something.
+   */
+  async restore(trashed, rel) {
+    if (typeof trashed !== 'string' || !trashed.startsWith('.trash/')) {
+      throw new BadPath(trashed);
+    }
+    const from = await this.abs(trashed);
+    if (!(await exists(from))) return { ok: false, missing: true, trashed };
+
+    let target = rel;
+    if (await exists(await this.abs(target))) {
+      const stem = rel.replace(/\.(md|txt)$/i, '');
+      const ext = path.extname(rel) || '.md';
+      let n = 2;
+      do {
+        target = `${stem} ${n}${ext}`;
+        n += 1;
+      } while (await exists(await this.abs(target)));
+    }
+
+    const to = await this.abs(target);
+    await fs.mkdir(path.dirname(to), { recursive: true });
+    await moveFile(from, to);
+    return { ok: true, path: target, restoredFrom: trashed };
+  }
+}
+
+const exists = (abs) => fs.access(abs).then(() => true, () => false);
+
+/** `2026-08-21 14-03-22` — sortable, and legal on Windows, where `:` is not. */
+function stampFor(now) {
+  const p = (n) => String(n).padStart(2, '0');
+  return (
+    `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())} ` +
+    `${p(now.getHours())}-${p(now.getMinutes())}-${p(now.getSeconds())}`
+  );
+}
+
+/**
+ * rename(), falling back to copy+unlink.
+ *
+ * A vault can span a mount point — a synced folder, a network share, a USB
+ * stick — and rename() across devices fails with EXDEV. Losing a delete to that
+ * would be irritating; losing an *undo* to it would be unforgivable.
+ */
+async function moveFile(from, to) {
+  try {
+    await fs.rename(from, to);
+  } catch (err) {
+    if (err.code !== 'EXDEV') throw err;
+    await fs.copyFile(from, to);
+    await fs.unlink(from);
+  }
 }
 
 /**

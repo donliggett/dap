@@ -82,6 +82,23 @@ export async function waitForAttr(page, selector, attr, expected, timeout = 3000
   throw new Error(`${selector}[${attr}] was "${last}", expected "${expected}"`);
 }
 
+/**
+ * Open a note by its visible title.
+ *
+ * Two things make the obvious one-liner wrong, and I have now written both
+ * bugs. The list lives in a drawer that is closed at the default width, so
+ * clicking straight at it fails with "element is outside of the viewport"; and
+ * boot order depends on mtime, which ties for fixtures written in the same
+ * millisecond, so trusting whichever note opened by itself is a flaky test.
+ */
+export async function openNote(page, title) {
+  if ((await page.getAttribute('.shell', 'data-drawer')) !== 'open') {
+    await page.click('[data-drawer-toggle]');
+  }
+  await page.locator('.note-item', { hasText: title }).first().click();
+  await page.waitForTimeout(150);
+}
+
 export async function withApp(files, fn) {
   const vault = await makeVault(files);
   const app = await serve({ vault, port: 0 });

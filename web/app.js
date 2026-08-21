@@ -19,6 +19,8 @@ const els = {
   saveText: $('[data-save-text]'),
   words: $('[data-word-count]'),
   conflictBar: $('[data-conflict-bar]'),
+  deleteBtn: $('[data-delete-btn]'),
+  undoBtn: $('[data-undo]'),
   editorHost: $('[data-editor-host]'),
   empty: $('[data-empty-state]'),
   emptyPath: $('[data-empty-path]'),
@@ -34,6 +36,8 @@ const state = {
   front: '',
   // { theirs, hash } while the file on disk has moved out from under us.
   conflict: null,
+  // { trashed, path } while a delete can still be taken back.
+  undo: null,
 };
 
 const { engine, editor: engineImpl, reason } = await createEditor();
@@ -54,6 +58,14 @@ const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ content, baseHash }),
     }).then(async (r) => ({ status: r.status, body: await r.json() })),
+  remove: (path) =>
+    fetch(`/api/note?path=${encodeURIComponent(path)}`, { method: 'DELETE' }).then((r) => r.json()),
+  restore: (trashed, path) =>
+    fetch('/api/restore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ trashed, path }),
+    }).then((r) => r.json()),
 };
 
 // ── saving ─────────────────────────────────────────────────────────────
@@ -176,9 +188,83 @@ async function saveMineAsCopy() {
 
 function applyPath(path) {
   state.path = path;
-  els.docName.textContent = path;
-  els.statusPath.textContent = path;
+  els.docName.textContent = path ?? '';
+  els.statusPath.textContent = path ?? '';
+  els.deleteBtn.disabled = !path;
 }
+
+// ── delete ─────────────────────────────────────────────────────────────
+/**
+ * Delete is a move to `.trash/`, so this is not the irreversible thing the
+ * icon implies — which is exactly why there is no "are you sure". A modal that
+ * appears every time trains you to dismiss it, and then it is not protecting
+ * anything. An undo you can actually reach, plus the file still being on disk,
+ * protects the case that matters: realising ten minutes later.
+ */
+let undoTimer = null;
+
+async function deleteCurrent() {
+  if (!state.path || naming) return;
+  if (state.conflict) return nudgeConflict();
+
+  // Belt and braces, and labelled as such. Today nothing escapes anyway —
+  // opening the next note clears the dirty flag before the debounce fires, and
+  // deleting the last one leaves state.path null, so save() bails either way. I
+  // could not write a test that fails without these four lines. They stay
+  // because a timer still holding the intent to save a note that is being
+  // deleted is only safe by coincidence of ordering elsewhere.
+  clearTimeout(idle);
+  clearTimeout(ceiling);
+  idle = ceiling = null;
+  state.dirty = false;
+
+  const result = await api.remove(state.path);
+  if (!result.ok) return;
+
+  offerUndo(result);
+  applyPath(null);
+  state.baseHash = null;
+
+  await refreshList();
+  if (state.notes.length) await open(state.notes[0].path);
+  else {
+    editor.setMarkdown('');
+    state.front = '';
+    els.source.textContent = '';
+    updateWords();
+  }
+}
+
+function offerUndo({ trashed, path }) {
+  state.undo = { trashed, path };
+  els.undoBtn.hidden = false;
+  els.saveText.textContent = `moved ${path} to trash`;
+  clearTimeout(undoTimer);
+  // Long enough to notice the mistake, short enough that the button does not
+  // become permanent furniture. The real safety net is the folder on disk.
+  undoTimer = setTimeout(clearUndo, 12000);
+}
+
+function clearUndo() {
+  clearTimeout(undoTimer);
+  state.undo = null;
+  els.undoBtn.hidden = true;
+}
+
+async function undoDelete() {
+  const pending = state.undo;
+  if (!pending) return;
+  clearUndo();
+
+  const result = await api.restore(pending.trashed, pending.path);
+  if (!result.ok) return;
+
+  await refreshList();
+  await open(result.path);
+}
+
+els.deleteBtn.addEventListener('click', deleteCurrent);
+els.undoBtn.addEventListener('click', undoDelete);
 
 function setSaveState(kind) {
   const text = {
