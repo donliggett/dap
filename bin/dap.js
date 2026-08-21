@@ -9,10 +9,22 @@ usage
   dap [folder]            serve a folder of notes
   dap [folder] --port N   pick the port (default 4747)
   dap --open              open a browser too
+  dap --hostname NAME     also answer to NAME (repeatable)
+  dap --lan               listen on every interface, not just localhost
   dap -h                  this
 
 the folder is just a folder. notes are .md files inside it. if it doesn't
 exist yet, dap makes it.
+
+reaching dap from a phone
+  put something in front of it that already does auth, and name the host:
+
+      tailscale serve --bg 4747
+      dap notes --hostname your-machine.your-tailnet.ts.net
+
+  dap stays on localhost; tailscale does the listening and the authenticating.
+  --lan is the blunter option: no auth, anyone on the network can read your
+  notes. only on a network you trust.
 `;
 
 /**
@@ -33,6 +45,8 @@ try {
     options: {
       port: { type: 'string' },
       open: { type: 'boolean', default: false },
+      hostname: { type: 'string', multiple: true },
+      lan: { type: 'boolean', default: false },
       help: { type: 'boolean', short: 'h', default: false },
     },
   }));
@@ -73,7 +87,12 @@ const { serve } = await import('../src/server.js');
 
 let server;
 try {
-  server = await serve({ vault: folder, port });
+  server = await serve({
+    vault: folder,
+    port,
+    host: values.lan ? '0.0.0.0' : '127.0.0.1',
+    allowHosts: values.hostname ?? [],
+  });
 } catch (err) {
   if (err.code === 'EADDRINUSE') {
     fail(`port ${port} is already in use`, 'try `dap --port 4748`, or stop the other dap');
@@ -85,6 +104,10 @@ try {
 if (created) console.log(`dap  created ${folder}`);
 console.log(`dap  ${server.url}`);
 console.log(`     ${folder}`);
+for (const name of values.hostname ?? []) console.log(`     also answering to ${name}`);
+if (values.lan) {
+  console.log('     listening on every interface — dap has no password of its own');
+}
 
 if (values.open) {
   const { spawn } = await import('node:child_process');

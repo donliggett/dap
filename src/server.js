@@ -12,11 +12,33 @@ const MIME = {
   '.css': 'text/css; charset=utf-8',
 };
 
-const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
+const LOOPBACK = ['localhost', '127.0.0.1', '[::1]', '::1'];
 
-export async function serve({ vault: vaultPath, port = 4747, host = '127.0.0.1' }) {
+/**
+ * Which Host headers we answer to.
+ *
+ * This is the DNS-rebinding guard: an attacker can point their own domain at
+ * 127.0.0.1, and the browser will then send us requests carrying THEIR host
+ * — same-origin as far as it's concerned, so origin checks don't help.
+ * Checking Host is what stops it.
+ *
+ * Which is why reaching dap from a phone can't just mean "allow anything".
+ * You name the host you'll actually use (a tailnet name, a LAN address), and
+ * that name joins the list. Everything else still gets turned away.
+ */
+function buildAllowlist(extra = []) {
+  const set = new Set(LOOPBACK);
+  for (const h of extra) {
+    const name = String(h).trim().replace(/^https?:\/\//, '').replace(/:\d+$/, '');
+    if (name) set.add(name);
+  }
+  return set;
+}
+
+export async function serve({ vault: vaultPath, port = 4747, host = '127.0.0.1', allowHosts = [] }) {
   const vault = new Vault(vaultPath);
   await fs.access(vault.root);
+  const allowed = buildAllowlist(allowHosts);
 
   let boundPort = port;
 
@@ -25,8 +47,17 @@ export async function serve({ vault: vaultPath, port = 4747, host = '127.0.0.1' 
       // Host check before anything else. An attacker's domain can be pointed at
       // 127.0.0.1, and the browser will then send us same-origin requests with
       // their Host header — origin checks don't catch that, this does.
-      const hostName = (req.headers.host ?? '').replace(/:\d+$/, '');
-      if (!LOOPBACK.has(hostName)) return json(res, 403, { error: 'bad host' });
+      // Bracketed IPv6 hosts keep their brackets; everything else loses its port.
+      const raw = req.headers.host ?? '';
+      const m = raw.match(/^(\[[^\]]+\]|[^:]+)(?::\d+)?$/);
+      const hostName = m ? m[1] : '';
+      if (!allowed.has(hostName)) {
+        return json(res, 403, {
+          error: 'bad host',
+          host: hostName,
+          hint: `dap only answers to ${[...allowed].join(', ')} — start it with --hostname ${hostName || '<name>'} to add this one`,
+        });
+      }
 
       const url = new URL(req.url, 'http://localhost');
       const route = `${req.method} ${url.pathname}`;
@@ -69,6 +100,7 @@ export async function serve({ vault: vaultPath, port = 4747, host = '127.0.0.1' 
 
   return {
     port: boundPort,
+    allowed: [...allowed],
     vault,
     url: `http://localhost:${boundPort}`,
     close: () => new Promise((r) => server.close(r)),
