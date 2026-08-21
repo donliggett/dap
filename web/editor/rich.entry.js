@@ -15,6 +15,7 @@
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import Link from '@tiptap/extension-link';
+import Image from '@tiptap/extension-image';
 import Table from '@tiptap/extension-table';
 import TableRow from '@tiptap/extension-table-row';
 import TableCell from '@tiptap/extension-table-cell';
@@ -27,7 +28,7 @@ export function createRichEditor() {
   let suppress = false;
 
   return {
-    capabilities: ['bold', 'italic', 'strike', 'heading', 'bulletList', 'link', 'table', 'clear'],
+    capabilities: ['bold', 'italic', 'strike', 'heading', 'bulletList', 'link', 'table', 'clear', 'image'],
 
     mount(node) {
       node.replaceChildren();
@@ -36,6 +37,11 @@ export function createRichEditor() {
         extensions: [
           StarterKit.configure({ heading: { levels: [1, 2, 3] } }),
           Link.configure({ openOnClick: false }),
+          // allowBase64 is off deliberately. An inlined data: URL would put
+          // megabytes of base64 into a note that is supposed to stay readable
+          // in any editor, and would defeat the point of attachments living in
+          // a folder you can open.
+          Image.configure({ inline: false, allowBase64: false }),
           Table.configure({ resizable: false }),
           TableRow,
           TableHeader,
